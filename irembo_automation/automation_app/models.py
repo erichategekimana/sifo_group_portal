@@ -64,7 +64,7 @@ class ClientApplication(models.Model):
         default=ProcessStatus.PENDING
     )
     payment_status = models.CharField(
-        max_value=20,
+        max_length=20,
         choices=PaymentStatus.choices,
         default=PaymentStatus.UNPAID
     )
