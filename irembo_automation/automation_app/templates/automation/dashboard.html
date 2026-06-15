@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Irembo Gatekeeper Admin Panel</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-8">
+
+    <header class="max-w-7xl mx-auto mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight text-emerald-400">Irembo Automation Portal</h1>
+            <p class="text-slate-400 text-sm mt-1">Active Production Outpost Monitoring Interface</p>
+        </div>
+        <div class="bg-slate-800 px-4 py-2 rounded-lg text-xs font-mono text-slate-300 border border-slate-700">
+            Workstation Footprint: <span class="text-amber-400 font-bold">Windows 11 Alignment Mode</span>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto">
+        <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-750 text-slate-300 uppercase text-xs tracking-wider border-b border-slate-700">
+                        <th class="p-4">Applicant Profile</th>
+                        <th class="p-4">National ID / Phone</th>
+                        <th class="p-4">Category</th>
+                        <th class="p-4">Engine Pipeline Status</th>
+                        <th class="p-4">Operator Control Hub</th>
+                        <th class="p-4">Billing Reference</th>
+                    </tr>
+                </thead>
+                <tbody id="dashboard-rows">
+                    {% for app in applications %}
+                    <tr id="row-{{ app.id }}" class="border-b border-slate-700 hover:bg-slate-750 transition-colors">
+                        <td class="p-4">
+                            <div class="font-bold text-sm text-slate-200">{{ app.first_name }} {{ app.last_name }}</div>
+                            <div class="text-xs text-slate-400 font-mono mt-0.5">{{ app.email|default:"No email attached" }}</div>
+                        </td>
+                        <td class="p-4">
+                            <div class="text-sm font-mono text-slate-300">{{ app.national_id }}</div>
+                            <div class="text-xs text-slate-400 mt-0.5">{{ app.phone_number }}</div>
+                        </td>
+                        <td class="p-4 text-sm font-semibold text-amber-400">
+                            {{ app.category_or_provisional }}
+                        </td>
+                        <td class="p-4 font-semibold text-sm">
+                            <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
+                                {% if app.status == 'PENDING' %} bg-slate-700 text-slate-300
+                                {% elif app.status == 'PROCESSING' %} bg-blue-900/60 text-blue-300 border border-blue-700/50 animate-pulse
+                                {% elif app.status == 'AWAITING_OTP' %} bg-amber-500 text-slate-950 font-extrabold border border-amber-300 animate-bounce
+                                {% elif app.status == 'OTP_PROVIDED' %} bg-indigo-900 text-indigo-200 border border-indigo-600
+                                {% elif app.status == 'SUCCESS' %} bg-emerald-900/50 text-emerald-300 border border-emerald-700
+                                {% else %} bg-rose-900/50 text-rose-300
+                                {% endif %}">
+                                {{ app.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="p-4 text-sm">
+                            <div id="control-container-{{ app.id }}">
+                                {% if app.status == 'PENDING' or app.status == 'FAILED' or app.status == 'CANCELED' %}
+                                    <a href="{% url 'start_automation' app.id %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded-md shadow text-xs transition-all inline-block">
+                                        Ignite Hunter Engine
+                                    </a>
+                                {% elif app.status == 'AWAITING_OTP' %}
+                                    <form action="{% url 'submit_otp' app.id %}" method="POST" class="flex gap-2">
+                                        {% csrf_token %}
+                                        <input type="text" name="otp_code" placeholder="SMS OTP" maxlength="6" required autocomplete="off"
+                                               class="bg-slate-900 border border-slate-600 text-amber-300 placeholder-slate-500 px-3 py-1.5 text-xs rounded-md focus:outline-none focus:border-amber-400 font-mono w-24 tracking-widest text-center">
+                                        <button type="submit" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-3 py-1.5 rounded-md text-xs transition-colors">
+                                            Inject Token
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <span class="text-xs text-slate-500 font-mono italic">Playwright engine controlling context...</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="p-4 font-mono font-bold text-sm tracking-wide text-emerald-400" id="billing-container-{{ app.id }}">
+                            {{ app.billing_number|default:"—" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-500 text-sm">
+                            No active client applications found inside PostgreSQL database.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        function updateDashboardMetrics() {
+            fetch('/api/status/')
+                .then(response => response.json())
+                .then(data => {
+                    data.applications.forEach(item => {
+                        const badge = document.querySelector(`[data-app-id="${item.id}"]`);
+                        if (badge) {
+                            let currentText = badge.innerText.trim();
+                            // If data sync states fluctuate across operational thresholds, trigger reload to reconstruct input forms
+                            if (currentText === 'Pending Slot Check' && item.status === 'PROCESSING' || 
+                                currentText === 'Filling Form on Irembo' && item.status === 'AWAITING_OTP' ||
+                                item.status === 'SUCCESS') {
+                                window.location.reload();
+                            }
+                        }
+                    });
+                })
+                .catch(err => console.error("Sync error tracking interface stream updates: ", err));
+        }
+        setInterval(updateDashboardMetrics, 2500);
+    </script>
+</body>
+</html>

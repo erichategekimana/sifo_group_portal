@@ -26,8 +26,10 @@ class ClientApplication(models.Model):
         PENDING = 'PENDING', 'Pending Slot Check'
         PROCESSING = 'PROCESSING', 'Filling Form on Irembo'
         AWAITING_OTP = 'AWAITING_OTP', 'Awaiting OTP Input'
+        OTP_PROVIDED = 'OTP_PROVIDED', 'OTP Provided, Finalizing'
         SUCCESS = 'SUCCESS', 'Registration Completed Successfully'
         FAILED = 'FAILED', 'Process Failed/Aborted'
+        CANCELED = 'CANCELED', 'Process Canceled by User'
 
     class PaymentStatus(models.TextChoices):
         UNPAID = 'UNPAID', 'Unpaid'
@@ -54,7 +56,7 @@ class ClientApplication(models.Model):
     # Licensing Details
     category_or_provisional = models.CharField(
         max_length=50, 
-        help_text="Target category (e.g., B) or existing provisional number for upgrades"
+        help_text="Target category (e.g., B) or existing provisional number"
     )
 
     # Automation State Machine

@@ -319,31 +319,80 @@ class IremboAutomationEngine:
     # -----------------------------------------------------------------------
     # STEP 7: The Adaptive Polling Loop Engine
     # -----------------------------------------------------------------------
+    # -----------------------------------------------------------------------
+    # STEP 7 & 8: The Corrected Orchestration & Polling Engine
+    # -----------------------------------------------------------------------
+    def navigate_to_booking_form(self, national_id, verification_data, service_type="BURANDU"):
+        """
+        Orchestrates the entry flow: Navigates from home, bypasses service popups,
+        clears identity verification, and opens up the form layout.
+        """
+        print(f"[Engine] Navigating to Irembo home page...")
+        self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
+        
+        # Click on 'Polisi' section from the home page context mapping
+        self.page.locator('text="Polisi"').click()
+        time.sleep(1)
+
+        # Select the target driving registration link
+        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').click()
+        self.page.wait_for_selector("mat-dialog-container", timeout=10000)
+
+        # Choose the precise drop-down category service matching user intent
+        if service_type == "BURANDU":
+            target_service = "Kwiyandikisha gukora ikizamini cy'uruhushya rwa burundu rwo gutwara ikinyabiziga"
+        else:
+            target_service = "Kwiyandikisha gukora ikizamini cy'uruhushya rw'icyiciro kisumbuye"
+
+        # Click the floating dialog dropdown component
+        self.page.locator("mat-dialog-container ng-select").click()
+        self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').click()
+        time.sleep(0.5)
+
+        # Click the "Saba" submission trigger to load the main execution form layout
+        self.page.locator('mat-dialog-container button:has-text("Saba")').click()
+        self.page.wait_for_load_state("networkidle")
+
+        # Step 8 Handshake: Input credentials and break past the verification modal check
+        self.handle_identity_verification(national_id, verification_data)
+
+    def _select_kicukiro_district(self):
+        """
+        Correctly leverages your set_angular_dropdown helper to pick 'Kicukiro'
+        from the district selection element box.
+        """
+        # Look for the dropdown component holding the district control mapping
+        # Adapting to Angular's unique form control bindings found in registering_for_driving_test.html
+        self.set_angular_dropdown("districtFormControl", "Kicukiro")
+
     def start_slot_polling(self, target_center="BUSANZA AUTOMATED CENTER"):
         print("[Engine] Polling engine activated. Monitoring slot availability variations...")
         
         while True:
             try:
+                # 1. Execute the newly mapped district wrapper selection method safely
                 self._select_kicukiro_district()
+
+                # 2. Scrape the table slots grid layouts and verify seat numbers
                 slot_secured = self.evaluate_and_select_slot(target_center=target_center)
 
                 if slot_secured:
                     print("[Engine] Slot locked! Moving directly into Step 9 Cooperative Interrupt.")
                     
-                    # 1. Halt the engine and trigger Windows 11 Alarms
+                    # 3. Halt the engine loop and trigger local alarms
                     self.enter_cooperative_interrupt_state()
                     
-                    # 2. Once the loop breaks (OTP provided via Django UI), run Step 10
-                    # Fallback to a test number if running without a live DB record
+                    # 4. Once the database status changes to OTP_PROVIDED, step out and execute Step 10
                     client_phone = self.booking_record.phone_number if self.booking_record else "0780000000"
-                    
                     billing_id = self.resume_and_finalize_booking(phone_number=client_phone)
                     
                     return billing_id 
 
-                # Jitter delays and reload
+                # Apply humanized random jitter delays to avoid profiling footprints
                 jitter_delay = random.uniform(3.5, 6.2)
                 time.sleep(jitter_delay)
+                
+                # Reload document frame cleanly to fetch structural variations
                 self.page.reload(wait_until="commit")
 
             except InterruptedError as ie:
@@ -351,7 +400,7 @@ class IremboAutomationEngine:
                 break
             except Exception as e:
                 print(f"[Engine] Exception occurring during polling cycle: {str(e)}")
-                time.sleep(5)
+                time.sleep(5) # Brief pause before retrying the loop to avoid rapid failure cycles
 
     def resume_and_finalize_booking(self, phone_number):
             """
