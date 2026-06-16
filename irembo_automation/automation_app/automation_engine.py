@@ -382,14 +382,21 @@ class IremboAutomationEngine:
         # 1. Initial selection of category
         if self.booking_record and self.booking_record.category:
             print(f"[Engine] Setting category selection to: {self.booking_record.category}")
-            # Try formcontrolname first, fallback to partial matches
-            self.set_angular_dropdown("licenseCategoryFormControl", self.booking_record.category)
+            # Try both possible form control names for category
+            category_control = "categoryFormControl"
+            if not self.page.locator(f'ng-select[formcontrolname="{category_control}"]').is_visible():
+                category_control = "licenseCategoryFormControl"
+            self.set_angular_dropdown(category_control, self.booking_record.category)
         else:
             print("[Warning] No target category specified in database record. Skipping initial category selection.")
 
         # 2. Initial selection of district
-        print("[Engine] Setting district selection to Kicukiro...")
-        self.set_angular_dropdown("districtFormControl", "Kicukiro")
+        district_control = "locationFormControl"
+        if not self.page.locator(f'ng-select[formcontrolname="{district_control}"]').is_visible():
+            district_control = "districtFormControl"
+
+        print(f"[Engine] Setting district selection (using control: {district_control}) to Kicukiro...")
+        self.set_angular_dropdown(district_control, "Kicukiro")
         
         while True:
             try:
@@ -409,10 +416,10 @@ class IremboAutomationEngine:
                 time.sleep(poll_delay)
                 
                 # Stealth/efficient refresh: toggle district to force Angular to update slots list without page reload
-                print("[Engine] Toggling district to refresh slots...")
-                self.set_angular_dropdown("districtFormControl", "Gasabo")
+                print(f"[Engine] Toggling district (using control: {district_control}) to refresh slots...")
+                self.set_angular_dropdown(district_control, "Gasabo")
                 time.sleep(random.uniform(1.2, 2.5))
-                self.set_angular_dropdown("districtFormControl", "Kicukiro")
+                self.set_angular_dropdown(district_control, "Kicukiro")
                 time.sleep(random.uniform(1.2, 2.5))
 
             except InterruptedError as ie:
