@@ -4,7 +4,7 @@ import sys
 import time
 import re
 from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
+from playwright_stealth import Stealth
 
 # Conditional import for Windows-native audio components
 # This prevents Ubuntu development from crashing during local run execution
@@ -59,7 +59,7 @@ class IremboAutomationEngine:
         self.context = self.browser.new_context(**context_params)
         
         # Apply stealth patches
-        stealth_sync(self.context)
+        Stealth().apply_stealth_sync(self.context)
         
         # Hardware property spoofing overrides
         self.context.add_init_script("""
