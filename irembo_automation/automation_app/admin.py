@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.contrib import messages
 from .models import ClientApplication
-# Direct import of your background thread offloader from views[cite: 14]
+# Direct import of your background thread offloader from views
 from .views import run_automation_worker 
 
 @admin.register(ClientApplication)
@@ -11,26 +11,26 @@ class ClientApplicationAdmin(admin.ModelAdmin):
     # -----------------------------------------------------------------------
     # 1. UI Layout & Scannability Configuration
     # -----------------------------------------------------------------------
-    # Swapped 'category_or_provisional' for explicit 'category' and 'provisional_number'[cite: 14]
+    # Swapped 'category_or_provisional' for explicit 'category' and 'provisional_number'
     list_display = (
         'colored_status',
         'national_id', 
         'client_full_name', 
         'phone_number', 
-        'category', 
+        'category', \
         'provisional_number',
         'colored_payment_status',
         'billing_number',
         'created_at'
     )
     
-    # Fast filtering sidebar using categories and timeline properties[cite: 14]
+    # Fast filtering sidebar using categories and timeline properties
     list_filter = ('status', 'payment_status', 'category', 'created_at')
     
-    # Global text query parameters mapping to your exact database indexes[cite: 14]
+    # Global text query parameters mapping to your exact database indexes
     search_fields = ('national_id', 'phone_number', 'first_name', 'last_name', 'billing_number', 'provisional_number')
     
-    # Security blockages: Protect read-only metadata tracking rows[cite: 14]
+    # Security blockages: Protect read-only metadata tracking rows
     readonly_fields = ('created_at', 'updated_at')
     
     # -----------------------------------------------------------------------
@@ -40,19 +40,16 @@ class ClientApplicationAdmin(admin.ModelAdmin):
 
     def launch_hunter_engine(self, request, queryset):
         """
-        Operator action to ignite the Playwright thread engine for selected 
-        clients directly from the checkbox grid rows[cite: 14].
+        Operator action to ignite the Playwright thread engine for selected clients directly from the checkbox grid rows.
         """
         activated_threads = 0
-        
         for application in queryset:
-            # Respect state machine choices explicitly derived from models.py[cite: 14]
+            # Respect state machine choices explicitly derived from models.py
             if application.status in [
                 ClientApplication.ProcessStatus.PENDING, 
                 ClientApplication.ProcessStatus.FAILED, 
                 ClientApplication.ProcessStatus.CANCELED
             ]:
-                # Spawn isolated background task sequence using the views engine thread blueprint[cite: 14]
                 worker_thread = threading.Thread(target=run_automation_worker, args=(application.id,))
                 worker_thread.daemon = True
                 worker_thread.start()
@@ -67,33 +64,32 @@ class ClientApplicationAdmin(admin.ModelAdmin):
         else:
             self.message_user(
                 request, 
-                "⚠️ Ignition Aborted: None of the selected clients are in a launchable state (already processing or complete).", 
+                "⚠️ Ignition Aborted: None of the selected clients are in a launchable state.", 
                 messages.WARNING
             )
             
     launch_hunter_engine.short_description = "🚀 Ignite Playwright Engine for Selected Clients"
 
-    # -----------------------------------------------------------------------
-    # 3. Dynamic HTML Column Renderers
-    # -----------------------------------------------------------------------
     def client_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
     client_full_name.short_description = "Applicant Name"
 
+    # -----------------------------------------------------------------------
+    # 3. Dynamic Visual Rendering Transformers
+    # -----------------------------------------------------------------------
     def colored_status(self, obj):
-        """Injects custom Tailwind/CSS styling elements directly into the Admin rows[cite: 14]."""
         colors = {
-            'PENDING': '#64748b',       # Slate Gray
-            'PROCESSING': '#3b82f6',    # Bright Blue
-            'AWAITING_OTP': '#d97706',  # Alert Amber/Orange
-            'OTP_PROVIDED': '#6366f1',  # Indigo Handshake
-            'SUCCESS': '#10b981',       # Emerald Green
-            'FAILED': '#f43f5e',        # Rose Red
-            'CANCELED': '#94a3b8',      # Light Gray
+            'PENDING': '#64748b',       
+            'PROCESSING': '#3b82f6',    
+            'AWAITING_OTP': '#d97706',  
+            'OTP_PROVIDED': '#6366f1',  
+            'SUCCESS': '#10b981',       
+            'FAILED': '#f43f5e',        
+            'CANCELED': '#94a3b8',      
         }
         color = colors.get(obj.status, '#ffffff')
         weight = 'bold' if obj.status in ['AWAITING_OTP', 'SUCCESS'] else 'normal'
-        border = 'border: 2px solid #f59e0b; padding: 3px 8px; border-radius: 4px; animation: pulse 2s infinite;' if obj.status == 'AWAITING_OTP' else ''
+        border = 'border: 2px solid #f59e0b; padding: 3px 8px; border-radius: 4px;' if obj.status == 'AWAITING_OTP' else ''
         
         return format_html(
             '<span style="color: {}; font-weight: {}; text-transform: uppercase; font-size: 0.75rem; {}">{}</span>',
