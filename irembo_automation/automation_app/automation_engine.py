@@ -323,8 +323,12 @@ class IremboAutomationEngine:
         self.page.locator('text="Polisi"').click()
         time.sleep(1)
 
-        # Select the target driving registration link
-        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').click()
+        # ----------------------------------------------------------------------
+        # FIXED: Appended .first to handle responsive DOM clones and prevent 
+        # Playwright strict mode violation crashes.
+        # ----------------------------------------------------------------------
+        print("[Engine] Selecting driving registration link...")
+        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').first.click()
         self.page.wait_for_selector("mat-dialog-container", timeout=10000)
 
         # Choose the precise drop-down category service matching user intent
