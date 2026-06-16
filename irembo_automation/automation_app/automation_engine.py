@@ -473,6 +473,7 @@ class IremboAutomationEngine:
                     # Commit the final data to the PostgreSQL database
                     self.booking_record.billing_number = billing_code
                     self.update_database_state("SUCCESS")
+                    self.capture_confirmation_receipt()
                     return billing_code
                 else:
                     print("[Step 10] Text found, but billing numbers could not be parsed.")
@@ -483,6 +484,51 @@ class IremboAutomationEngine:
                 print(f"[Step 10] Billing table timeout or extraction failure. {e}")
                 self.update_database_state("FAILED")
                 return None
+
+    # -----------------------------------------------------------------------
+    # PHASE 6: Wrap-up & High-Fidelity Receipt Capture
+    # -----------------------------------------------------------------------
+    def capture_confirmation_receipt(self):
+        """
+        Waits for the final Irembo success layout to fully render,
+        snaps a full-page verification screenshot, and saves it to disk.
+        """
+        print("[Engine] Finalizing transaction. Waiting for receipt generation page...")
+
+        try:
+            # Wait for the official Irembo confirmation container elements to settle
+            self.page.wait_for_selector(".success-container, .billing-info-box", timeout=15000)
+            time.sleep(2) # Allow any fading animations or QR codes to render clearly
+
+            # Formulate a clean, cross-platform file path using the client's National ID
+            national_id = self.booking_record.national_id if self.booking_record else "unknown_client"
+            filename = f"receipt_{national_id}_{int(time.time())}.png"
+
+            # Resolve safe paths matching both your Linux local environment and Windows 11 target paths
+            media_dir = os.path.abspath(os.path.join(os.getcwd(), "media", "receipts"))
+            if not os.path.exists(media_dir):
+                os.makedirs(media_dir)
+
+            screenshot_path = os.path.join(media_dir, filename)
+
+            # Execute high-fidelity full-page image capture
+            self.page.screenshot(path=screenshot_path, full_page=True)
+            print(f"[Success] Visual receipt screenshot pinned securely at: {screenshot_path}")
+
+            # Optionally capture a clean PDF vector copy if running on dedicated environments
+            try:
+                pdf_path = screenshot_path.replace(".png", ".pdf")
+                self.page.pdf(path=pdf_path, format="A4")
+                print(f"[Success] PDF document receipt generated at: {pdf_path}")
+            except Exception:
+                # Chromium won't render direct PDFs if not running explicitly in headless mode; skip gracefully
+                pass
+
+            return filename
+
+        except Exception as e:
+            print(f"[Warning] Failed to generate physical receipt capture layout: {str(e)}")
+            return None
 
 
     def close(self):
