@@ -75,6 +75,33 @@ class IremboAutomationEngine:
         else:
             route.continue_()
 
+    def check_for_errors(self):
+        """
+        Scans the page for common error indicators (toasts, mat-errors, alert boxes).
+        Raises ValueError if a visible error is detected.
+        """
+        error_selectors = [
+            "mat-error",
+            ".alert-danger",
+            ".text-danger",
+            "mat-snack-bar-container",
+            ".toast-message",
+            ".error-message"
+        ]
+        for selector in error_selectors:
+            try:
+                elements = self.page.locator(selector).all()
+                for el in elements:
+                    if el.is_visible():
+                        error_text = el.inner_text().strip()
+                        if error_text:
+                            print(f"[Engine Error Detected] {error_text}")
+                            raise ValueError(f"Irembo Portal Error: {error_text}")
+            except ValueError:
+                raise
+            except Exception:
+                pass
+
     def handle_identity_verification(self, national_id, client_verification_data):
         """
         Inputs National ID credentials and clears the identity popup modal layout.
@@ -92,6 +119,14 @@ class IremboAutomationEngine:
         # Resolve dynamic validation field targets
         name_input = self.page.locator('input[formcontrolname="nameFormControl"]')
         date_input = self.page.locator('input[id="datePicker"]')
+
+        # Wait for either name_input or date_input to become visible (to avoid race conditions)
+        print("[Step 8] Waiting for validation fields to render inside the modal...")
+        start_time = time.time()
+        while time.time() - start_time < 5.0:
+            if name_input.is_visible() or date_input.is_visible():
+                break
+            time.sleep(0.2)
 
         # Determine inputs based on database record or fallbacks
         first_name = self.booking_record.first_name if (self.booking_record and self.booking_record.first_name) else client_verification_data
@@ -123,17 +158,29 @@ class IremboAutomationEngine:
         print("[Step 8] Submitting identity verification review confirmation ('Genzura')...")
         review_btn = self.page.locator('mat-dialog-container button.btn-primary:has-text("Genzura")')
         
-        # Perform a final stability dispatch check to unlock disabled states if present
+        # Wait for the button to be visible
+        try:
+            review_btn.wait_for(state="visible", timeout=4000)
+        except Exception:
+            self.check_for_errors()
+            raise ValueError("Verification button ('Genzura') was not found or not visible.")
+
+        # Check if the button is disabled
         if review_btn.is_disabled():
-            print("[Warning] Form validation state locked. Dispatching fallback layout recalculation triggers...")
-            self.page.keyboard.press("Tab")
-            time.sleep(0.5)
+            print("[Warning] Form validation state locked. Checking for immediate validation errors...")
+            time.sleep(1)
+            self.check_for_errors()
+            raise ValueError("Verification button ('Genzura') is disabled. Please verify ID, name, or birth date values.")
 
         review_btn.click()
         
-        # Wait until modal completely detaches from view layers
-        self.page.wait_for_selector("mat-dialog-container", state="detached", timeout=12000)
-        print("[Step 8] Identity validation parameters cleared successfully.")
+        # Wait until modal completely detaches from view layers, or check for errors
+        try:
+            self.page.wait_for_selector("mat-dialog-container", state="detached", timeout=8000)
+            print("[Step 8] Identity validation parameters cleared successfully.")
+        except Exception:
+            self.check_for_errors()
+            raise ValueError("Identity verification modal did not close. Please verify the credentials.")
 
     def navigate_to_booking_form(self, national_id, verification_data):
         """
@@ -197,7 +244,10 @@ class IremboAutomationEngine:
                 search_btn.click()
             except Exception as e:
                 print(f"[Engine] Search button not visible or not found after 3s ({e}). Continuing...")
-            time.sleep(1)
+            
+            # Wait for any immediate error messages to display
+            time.sleep(2)
+            self.check_for_errors()
 
     def set_angular_dropdown(self, control_name, option_text):
         """
