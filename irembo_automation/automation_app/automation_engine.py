@@ -3,8 +3,8 @@ import random
 import sys
 import time
 import re
-from playwright.sync_api import sync_playwright
-from playwright_stealth import Stealth
+from playwright.sync_api import sync_playwright  # type: ignore[import]
+from playwright_stealth import Stealth  # type: ignore[import]
 
 # Conditional import for Windows-native audio components
 # This prevents Ubuntu development from crashing during local run execution
@@ -76,7 +76,6 @@ class IremboAutomationEngine:
         # Intercept network requests globally across this browser context
         self.context.route("**/*", lambda route: self._intercept_resources(route))
 
-
     def trigger_windows_alerts(self):
         """
         Triggers aggressive hardware sounds and system alerts on Windows 11
@@ -147,8 +146,6 @@ class IremboAutomationEngine:
             # Sleep precisely 1 second between database health check requests to minimize processor load
             time.sleep(1.0)
 
-
-
     def _intercept_resources(self, route):
         """
         Aborts requests for images, fonts, stylesheet formatting, and analytical 
@@ -165,9 +162,8 @@ class IremboAutomationEngine:
             # Let functional scripts, documents, and API responses pass through
             route.continue_()
 
-
     # -----------------------------------------------------------------------
-    # NEW INTERACTION LOGIC PIPELINE
+    # NEW INTERACTION LOGIC PIPELINE WITH INTEGRATED STRUCTURAL ALIGNMENTS
     # -----------------------------------------------------------------------
 
     def handle_identity_verification(self, national_id, client_verification_data, provisional_no=None):
@@ -208,14 +204,14 @@ class IremboAutomationEngine:
             # Absolute text selector failover if form control configurations drift
             self.page.locator('input[placeholder*="Injiza"]').fill(client_verification_data)
 
-        # Accept terms within the modal layout safely via text string identification
-        # Avoiding variable ID matching patterns since dynamic IDs can conflict
-        self.page.locator('mat-checkbox:has-text("Nemeye amategeko")').click()
+        # INTEGRATION CHANGE: Match the exact text required inside the pop-up modal
+        print("[Step 8] Checking inner modal terms checkbox...")
+        self.page.locator('mat-checkbox:has-text("Nemeye amategeko agenga imikoreshereze")').click()
         time.sleep(0.5)
 
-        # Click the submission confirmation element
-        print("[Step 8] Clicking verification confirmation button ('Genzura')...")
-        self.page.locator('mat-dialog-container button:has-text("Genzura")').click()
+        # INTEGRATION CHANGE: Click verification button targeting the structural layout class definition
+        print("[Step 8] Clicking verification review button ('Genzura')...")
+        self.page.locator('mat-dialog-container button.btn-primary:has-text("Genzura")').click()
         
         # Wait until modal detaches, indicating verification succeeded
         self.page.wait_for_selector("mat-dialog-container", state="detached", timeout=12000)
@@ -296,14 +292,12 @@ class IremboAutomationEngine:
         print("[Engine] Executing session health check...")
         try:
             # Navigate directly to a portal page that requires an active login session
-            # (e.g., your specific agent dashboard URL or profile page)
             self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
             
             # Introduce a humanized micro-delay to let DOM components render
             time.sleep(random.uniform(1.5, 2.5))
 
             # Look for elements that prove an authenticated state vs a public guest state
-            # Replace 'Sign Out' or check URL states depending on actual portal dashboard markers
             is_logged_in = self.page.locator("text=Sign Out").is_visible() or "dashboard" in self.page.url.lower()
             
             if is_logged_in:
@@ -316,12 +310,7 @@ class IremboAutomationEngine:
         except Exception as e:
             print(f"[Engine] Health check encountered an error: {str(e)}")
             return False
-    # -----------------------------------------------------------------------
-    # STEP 7: The Adaptive Polling Loop Engine
-    # -----------------------------------------------------------------------
-    # -----------------------------------------------------------------------
-    # STEP 7 & 8: The Corrected Orchestration & Polling Engine
-    # -----------------------------------------------------------------------
+
     def navigate_to_booking_form(self, national_id, verification_data, service_type="BURANDU"):
         """
         Orchestrates the entry flow: Navigates from home, bypasses service popups,
@@ -361,8 +350,6 @@ class IremboAutomationEngine:
         Correctly leverages your set_angular_dropdown helper to pick 'Kicukiro'
         from the district selection element box.
         """
-        # Look for the dropdown component holding the district control mapping
-        # Adapting to Angular's unique form control bindings found in registering_for_driving_test.html
         self.set_angular_dropdown("districtFormControl", "Kicukiro")
 
     def start_slot_polling(self, target_center="BUSANZA AUTOMATED CENTER"):
@@ -403,87 +390,84 @@ class IremboAutomationEngine:
                 time.sleep(5) # Brief pause before retrying the loop to avoid rapid failure cycles
 
     def resume_and_finalize_booking(self, phone_number):
-            """
-            Executes Step 10: Completes the notification form, accepts terms, submits,
-            injects the OTP received from the Django UI, and extracts the billing ID.
-            """
-            print(f"[Step 10] Resuming execution... Processing notification for phone: {phone_number}")
+        """
+        Executes Step 10: Completes the notification form, accepts terms, submits,
+        injects the OTP received from the Django UI, and extracts the billing ID.
+        """
+        print(f"[Step 10] Resuming execution... Processing notification for phone: {phone_number}")
 
-            # 1. Select the "Nomero ya telefoni (Rwanda)" checkbox
-            phone_checkbox = self.page.locator('mat-checkbox:has-text("Nomero ya telefoni (Rwanda)")')
-            if not phone_checkbox.locator('input').is_checked():
-                phone_checkbox.click()
-                time.sleep(0.5) # Allow Angular DOM to render the new input field
+        # 1. Select the "Nomero ya telefoni (Rwanda)" checkbox
+        phone_checkbox = self.page.locator('mat-checkbox:has-text("Nomero ya telefoni (Rwanda)")')
+        if not phone_checkbox.locator('input').is_checked():
+            phone_checkbox.click()
+            time.sleep(0.5) # Allow Angular DOM to render the new input field
 
-            # 2. Fill the dynamically rendered phone number field
-            # Using a fallback hierarchy to ensure we hit the right input even if classes change
-            phone_input = self.page.locator('input[placeholder*="07"], input[type="tel"]').first
-            if phone_input.is_visible():
-                phone_input.fill(phone_number)
-            else:
-                # Fallback based on the notification card container structure
-                self.page.locator('.notification-card input').last.fill(phone_number)
+        # 2. Fill the dynamically rendered phone number field
+        phone_input = self.page.locator('input[placeholder*="07"], input[type="tel"]').first
+        if phone_input.is_visible():
+            phone_input.fill(phone_number)
+        else:
+            self.page.locator('.notification-card input').last.fill(phone_number)
 
-            # 3. Accept the final terms and conditions
-            terms_checkbox = self.page.locator('mat-checkbox:has-text("Nemeje ko amakuru yose natanze")')
-            if not terms_checkbox.locator('input').is_checked():
-                terms_checkbox.click()
-                time.sleep(0.5)
+        # 3. INTEGRATION CHANGE: Target the precise Main Page Form Terms & Conditions layout statement
+        exact_form_terms = "Nemeje ko amakuru yose natanze ahangaha ari ukuri kandi ajyanye n'igihe."
+        terms_checkbox = self.page.locator(f'mat-checkbox:has-text("{exact_form_terms}")')
+        if not terms_checkbox.locator('input').is_checked():
+            terms_checkbox.click()
+            time.sleep(0.5)
 
-            # 4. Click the 'Emeza' (Submit) button
-            print("[Step 10] Clicking 'Emeza' to trigger submission...")
-            self.page.locator('#submit_btn').click()
+        # 4. INTEGRATION CHANGE: Match the final success submission target via composite button details
+        print("[Step 10] Clicking submission confirmation button ('Emeza')...")
+        self.page.locator('#submit_btn.btn-success:has-text("Emeza")').click()
 
-            # 5. OTP Injection Handshake
-            # Assuming the Irembo OTP verification modal appears right after submission
-            if self.booking_record and self.booking_record.otp_code:
-                print(f"[Step 10] Injecting OTP code: {self.booking_record.otp_code}")
-                
-                # Using flexible generic locators for the OTP field
-                otp_input = self.page.locator('input[formcontrolname*="otp"], input[placeholder*="OTP"], input[placeholder*="kode"]').first
-                
-                try:
-                    self.page.wait_for_selector(otp_input, timeout=10000)
-                    otp_input.fill(self.booking_record.otp_code)
-                    
-                    # Click the verification submission button on the modal
-                    self.page.locator('button:has-text("Emeza"), button:has-text("Genzura"), button:has-text("Komeza")').last.click()
-                except Exception as e:
-                    print(f"[Step 10] Warning: OTP modal not found or structure changed. Error: {e}")
-
-            # 6. Extract the Final Billing Code
-            print("[Step 10] Waiting for the final billing confirmation table...")
+        # 5. OTP Injection Handshake
+        if self.booking_record and self.booking_record.otp_code:
+            print(f"[Step 10] Injecting OTP code: {self.booking_record.otp_code}")
+            
+            otp_input = self.page.locator('input[formcontrolname*="otp"], input[placeholder*="OTP"], input[placeholder*="kode"]').first
             
             try:
-                # Wait for the billing text string. Accounting for potential "Kode yo" vs "Kode you" typos.
-                billing_text_locator = self.page.locator('text="Kode yo kwishyuriraho", text="Kode you kwishyuriraho"')
-                billing_text_locator.wait_for(timeout=15000)
+                self.page.wait_for_selector(otp_input, timeout=10000)
+                otp_input.fill(self.booking_record.otp_code)
                 
-                # Navigate up the DOM tree slightly to grab the surrounding container text
-                billing_container = billing_text_locator.locator("xpath=..")
-                full_text = billing_container.inner_text()
-                
-                # Use Regex to explicitly extract the standard Irembo billing format (typically starting with 88)
-                match = re.search(r'(88\d+)', full_text)
-                
-                if match and self.booking_record:
-                    billing_code = match.group(1)
-                    print(f"[Step 10] SUCCESS! Billing Code Extracted: {billing_code}")
-                    
-                    # Commit the final data to the PostgreSQL database
-                    self.booking_record.billing_number = billing_code
-                    self.update_database_state("SUCCESS")
-                    self.capture_confirmation_receipt()
-                    return billing_code
-                else:
-                    print("[Step 10] Text found, but billing numbers could not be parsed.")
-                    self.update_database_state("MANUAL_REVIEW_NEEDED")
-                    return None
-                    
+                # Clean integration matching for the final validation trigger inside the OTP overlay frame
+                self.page.locator('button:has-text("Emeza"), button:has-text("Genzura"), button:has-text("Komeza")').last.click()
             except Exception as e:
-                print(f"[Step 10] Billing table timeout or extraction failure. {e}")
-                self.update_database_state("FAILED")
+                print(f"[Step 10] Warning: OTP modal not found or structure changed. Error: {e}")
+
+        # 6. Extract the Final Billing Code
+        print("[Step 10] Waiting for the final billing confirmation table...")
+        
+        try:
+            # Fallback regex parsing tracking variations for layout string literal matches
+            billing_text_locator = self.page.locator('text="Kode yo kwishyuriraho", text="Kode you kwishyuriraho"')
+            billing_text_locator.wait_for(timeout=15000)
+            
+            # Navigate up the DOM tree slightly to grab the surrounding container text
+            billing_container = billing_text_locator.locator("xpath=..")
+            full_text = billing_container.inner_text()
+            
+            # Use Regex to explicitly extract the standard Irembo billing format (typically starting with 88)
+            match = re.search(r'(88\d+)', full_text)
+            
+            if match and self.booking_record:
+                billing_code = match.group(1)
+                print(f"[Step 10] SUCCESS! Billing Code Extracted: {billing_code}")
+                
+                # Commit the final data to the PostgreSQL database
+                self.booking_record.billing_number = billing_code
+                self.update_database_state("SUCCESS")
+                self.capture_confirmation_receipt()
+                return billing_code
+            else:
+                print("[Step 10] Text found, but billing numbers could not be parsed.")
+                self.update_database_state("MANUAL_REVIEW_NEEDED")
                 return None
+                
+        except Exception as e:
+            print(f"[Step 10] Billing table timeout or extraction failure. {e}")
+            self.update_database_state("FAILED")
+            return None
 
     # -----------------------------------------------------------------------
     # PHASE 6: Wrap-up & High-Fidelity Receipt Capture
@@ -529,7 +513,6 @@ class IremboAutomationEngine:
         except Exception as e:
             print(f"[Warning] Failed to generate physical receipt capture layout: {str(e)}")
             return None
-
 
     def close(self):
         """Clean teardown of browser contexts."""
