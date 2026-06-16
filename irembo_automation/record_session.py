@@ -1,6 +1,6 @@
 import time
 from playwright.sync_api import sync_playwright  # type: ignore[import]
-from playwright_stealth import stealth_sync  # type: ignore[import]
+from playwright_stealth import Stealth  # type: ignore[import]
 
 def record_irembo_session():
     with sync_playwright() as p:
@@ -11,7 +11,7 @@ def record_irembo_session():
             locale="en-US",
             timezone_id="Africa/Kigali"
         )
-        stealth_sync(context)
+        Stealth().apply_stealth_sync(context)
         page = context.new_page()
 
         # 2. Navigate to the Irembo landing or login portal
