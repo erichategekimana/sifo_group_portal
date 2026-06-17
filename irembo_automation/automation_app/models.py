@@ -25,11 +25,11 @@ class ClientApplication(models.Model):
     class ProcessStatus(models.TextChoices):
         PENDING = 'PENDING', 'Pending Slot Check'
         PROCESSING = 'PROCESSING', 'Filling Form on Irembo'
-        AWAITING_OTP = 'AWAITING_OTP', 'Awaiting OTP Input'
-        OTP_PROVIDED = 'OTP_PROVIDED', 'OTP Provided, Finalizing'
+        FINALIZING = 'FINALIZING', 'Slot Secured — Submitting Application'
         SUCCESS = 'SUCCESS', 'Registration Completed Successfully'
         FAILED = 'FAILED', 'Process Failed/Aborted'
         CANCELED = 'CANCELED', 'Process Canceled by User'
+        MANUAL_REVIEW_NEEDED = 'MANUAL_REVIEW_NEEDED', 'Manual Review Required'
 
     class PaymentStatus(models.TextChoices):
         UNPAID = 'UNPAID', 'Unpaid'
@@ -80,7 +80,6 @@ class ClientApplication(models.Model):
     )
     
     # Handshake & Output Fields
-    otp_code = models.CharField(max_length=10, blank=True, null=True)
     billing_number = models.CharField(max_length=50, blank=True, null=True)
     application_number = models.CharField(max_length=50, blank=True, null=True)
 
@@ -123,6 +122,6 @@ class ClientApplication(models.Model):
         if age < 18:
             raise ValidationError({'birth_date': "Client must be at least 18 years old to register for a driving license."})
 
-        # 2. State-Machine Safeguard: OTP validation
-        if self.status == self.ProcessStatus.AWAITING_OTP and not self.otp_code:
-            pass
+        # Provisional number required for definitive license applications
+        if not self.is_upgrade_application and not self.provisional_number:
+            pass  # Handled at the engine level with clear error messages

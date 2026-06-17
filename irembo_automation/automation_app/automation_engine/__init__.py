@@ -5,7 +5,7 @@ from .navigation import NavigationMixin
 from .identity import IdentityMixin
 from .selectors import SelectorsMixin
 from .polling import PollingMixin
-from .otp import OTPMixin
+from .final import FinalizationMixin
 from .utils import UtilsMixin
 
 class IremboAutomationEngine(
@@ -15,7 +15,7 @@ class IremboAutomationEngine(
     IdentityMixin,
     SelectorsMixin,
     PollingMixin,
-    OTPMixin,
+    FinalizationMixin,
     UtilsMixin,
 ):
     def __init__(self, booking_record=None):

@@ -145,15 +145,18 @@ class PollingMixin:
                 slot_secured = self.evaluate_and_select_slot(target_center=target_center)
 
                 if slot_secured:
-                    print(f"[Engine] Slot secured at {target_center}! Transitioning to OTP stage...")
+                    print(f"[Engine] Slot secured at {target_center}! Proceeding to finalization...")
                     try:
-                        self.enter_cooperative_interrupt_state()
                         client_phone = self.booking_record.phone_number if self.booking_record else "0780000000"
-                        billing_id = self.resume_and_finalize_booking(phone_number=client_phone)
+                        billing_id = self.finalize_booking(phone_number=client_phone)
+                        if billing_id:
+                            print("[Engine] Booking completed successfully. Browser will remain open for inspection.")
+                            print("Press Enter to close the browser and finish the worker thread.")
+                            input()   # Wait for user to press Enter
                         return billing_id
                     except Exception as e:
                         print(f"[Engine] Finalization failed after slot secured: {e}")
-                        # We must stop polling because we've moved to the next page.
+                        # Optionally pause here too for debugging
                         return None
 
                 # No slot found – move to next time

@@ -79,18 +79,18 @@ class ClientApplicationAdmin(admin.ModelAdmin):
     # -----------------------------------------------------------------------
     def colored_status(self, obj):
         colors = {
-            'PENDING': '#64748b',       
-            'PROCESSING': '#3b82f6',    
-            'AWAITING_OTP': '#d97706',  
-            'OTP_PROVIDED': '#6366f1',  
-            'SUCCESS': '#10b981',       
-            'FAILED': '#f43f5e',        
-            'CANCELED': '#94a3b8',      
+            'PENDING': '#64748b',
+            'PROCESSING': '#3b82f6',
+            'FINALIZING': '#d97706',
+            'SUCCESS': '#10b981',
+            'FAILED': '#f43f5e',
+            'CANCELED': '#94a3b8',
+            'MANUAL_REVIEW_NEEDED': '#f59e0b',
         }
         color = colors.get(obj.status, '#ffffff')
-        weight = 'bold' if obj.status in ['AWAITING_OTP', 'SUCCESS'] else 'normal'
-        border = 'border: 2px solid #f59e0b; padding: 3px 8px; border-radius: 4px;' if obj.status == 'AWAITING_OTP' else ''
-        
+        weight = 'bold' if obj.status in ['FINALIZING', 'SUCCESS'] else 'normal'
+        border = 'border: 2px solid #f59e0b; padding: 3px 8px; border-radius: 4px;' if obj.status == 'FINALIZING' else ''
+
         return format_html(
             '<span style="color: {}; font-weight: {}; text-transform: uppercase; font-size: 0.75rem; {}">{}</span>',
             color, weight, border, obj.get_status_display()
@@ -117,7 +117,7 @@ class ClientApplicationAdmin(admin.ModelAdmin):
             'fields': ('phone_number', 'email', 'category', 'provisional_number')
         }),
         ('Automation State Tracking Terminal', {
-            'fields': ('status', 'payment_status', 'otp_code', 'billing_number', 'application_number'),
+            'fields': ('status', 'payment_status', 'billing_number', 'application_number'),
             'description': 'Internal state parameters handled directly by the running worker threads.'
         }),
         ('System Timestamps Auditing', {

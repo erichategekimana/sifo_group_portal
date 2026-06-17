@@ -12,15 +12,19 @@ class IdentityMixin:
         time.sleep(0.5)
 
         print("[Step 8] Monitoring for the security validation modal container...")
+        # Wait for any mat-dialog-container to appear, then get the first visible one
         try:
-            self.page.wait_for_selector("mat-dialog-container app-officer-action", timeout=12000)
+            self.page.wait_for_selector("mat-dialog-container:visible", timeout=12000)
         except Exception:
             self._pause_on_error("Identity verification modal did not appear. National ID may be invalid or session expired.")
         time.sleep(1)
 
-        # Locate the challenge inputs
-        date_input = self.page.locator('input[formcontrolname="birthDateFormControl"]')
-        name_input = self.page.locator('input[formcontrolname="nameFormControl"]')
+        # Scope to the visible modal
+        modal = self.page.locator("mat-dialog-container:visible").first
+
+        # Locate the challenge inputs inside this modal only
+        date_input = modal.locator('input[formcontrolname="birthDateFormControl"]')
+        name_input = modal.locator('input[formcontrolname="nameFormControl"]')
 
         print("[Step 8] Waiting for verification challenge field to render...")
         challenge_detected = False
@@ -63,10 +67,9 @@ class IdentityMixin:
 
         # --- Checkbox handling (improved) ---
         print("[Step 8] Verifying terms checkbox state...")
-        # Use the checkbox input directly to avoid overlay interference (still good to have closed datepicker)
-        checkbox_input = self.page.locator('mat-checkbox:has-text("Nemeye") input[type="checkbox"]')
+        # Scope checkbox inside the modal as well (optional, but safer)
+        checkbox_input = modal.locator('mat-checkbox:has-text("Nemeye") input[type="checkbox"]')
         try:
-            # Wait for it to be enabled and not hidden by overlay (should be fine after Escape)
             checkbox_input.wait_for(state="visible", timeout=5000)
             if not checkbox_input.is_checked():
                 print("[Step 8] Terms checkbox is unchecked. Clicking to accept...")
@@ -75,15 +78,14 @@ class IdentityMixin:
                 print("[Step 8] Terms checkbox already checked. Skipping click.")
         except Exception as e:
             print(f"[Step 8] Warning: Could not interact with checkbox ({e}). Attempting fallback click on container...")
-            # Fallback: click the inner container (original method)
-            container = self.page.locator('mat-checkbox:has-text("Nemeye") .mat-checkbox-inner-container')
-            container.click(force=True)  # force if overlay still exists
+            container = modal.locator('mat-checkbox:has-text("Nemeye") .mat-checkbox-inner-container')
+            container.click(force=True)
 
         time.sleep(0.5)
 
         # --- Genzura button ---
         print("[Step 8] Locating 'Genzura' confirmation button...")
-        review_btn = self.page.locator('mat-dialog-container button.btn-primary')
+        review_btn = modal.locator('button.btn-primary')
 
         try:
             review_btn.wait_for(state="visible", timeout=4000)

@@ -3,41 +3,42 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from .models import ClientApplication
 from automation_app.automation_engine import IremboAutomationEngine
+from automation_app.automation_engine.utils import run_in_db_thread
 from playwright.sync_api import sync_playwright  # type: ignore[import]
 
 def run_automation_worker(application_id):
-    """
-    Independent worker executed inside a background thread.
-    Manages the lifecycle of a single Playwright automation sequence.
-    """
-    # Fetch and lock state using the exact production model
-    application = ClientApplication.objects.get(id=application_id)
-    application.status = ClientApplication.ProcessStatus.PROCESSING  # 'PROCESSING'
-    application.save()
-    
+    def _set_processing():
+        app = ClientApplication.objects.get(id=application_id)
+        app.status = ClientApplication.ProcessStatus.PROCESSING
+        app.save(update_fields=["status"])
+        return app
+
+    application = run_in_db_thread(_set_processing)
+
     try:
         with sync_playwright() as p:
-            # Instantiate engine passing the live database record reference
             engine = IremboAutomationEngine(booking_record=application)
-            
-            # Keep headless=False for testing visibility
             engine.initialize_stealth_browser(p, headless=False)
-            
-            # Map identity fields directly from your production model schema
             engine.navigate_to_booking_form(
                 national_id=application.national_id,
                 verification_data=application.first_name
             )
-            
             billing_id = engine.start_slot_polling()
             print(f"[Worker Thread] Process completed cleanly for ID {application.national_id}. Code: {billing_id}")
-            
+
     except Exception as e:
         print(f"[Worker Thread Error] Execution failed for application {application_id}: {str(e)}")
-        application.refresh_from_db()
-        if application.status not in [ClientApplication.ProcessStatus.SUCCESS, ClientApplication.ProcessStatus.CANCELED]:
-            application.status = ClientApplication.ProcessStatus.FAILED
-            application.save()
+
+        def _mark_failed():
+            app = ClientApplication.objects.get(id=application_id)
+            if app.status not in [
+                ClientApplication.ProcessStatus.SUCCESS,
+                ClientApplication.ProcessStatus.CANCELED,
+            ]:
+                app.status = ClientApplication.ProcessStatus.FAILED
+                app.save(update_fields=["status"])
+
+        run_in_db_thread(_mark_failed)
 
 def dashboard(request):
     """Renders the central monitoring dashboard panel grid."""
@@ -56,18 +57,7 @@ def start_automation(request, application_id):
         
     return redirect('dashboard')
 
-def submit_otp(request, application_id):
-    """Intercepts SMS token from UI form and passes it down to the waiting engine process."""
-    if request.method == 'POST':
-        application = get_object_or_404(ClientApplication, id=application_id)
-        received_otp = request.POST.get('otp_code')
-        
-        if received_otp:
-            application.otp_code = received_otp
-            application.status = ClientApplication.ProcessStatus.OTP_PROVIDED  # 'OTP_PROVIDED'
-            application.save()  # Step 9 loop catches this change on its next refresh
-            
-    return redirect('dashboard')
+
 
 def api_status_feed(request):
     """Asynchronous JSON polling feed utilized by dashboard JavaScript tickers."""

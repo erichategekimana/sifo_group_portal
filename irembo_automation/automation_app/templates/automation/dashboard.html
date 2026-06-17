@@ -48,9 +48,9 @@
                             <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
                                 {% if app.status == 'PENDING' %} bg-slate-700 text-slate-300
                                 {% elif app.status == 'PROCESSING' %} bg-blue-900/60 text-blue-300 border border-blue-700/50 animate-pulse
-                                {% elif app.status == 'AWAITING_OTP' %} bg-amber-500 text-slate-950 font-extrabold border border-amber-300 animate-bounce
-                                {% elif app.status == 'OTP_PROVIDED' %} bg-indigo-900 text-indigo-200 border border-indigo-600
+                                {% elif app.status == 'FINALIZING' %} bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse
                                 {% elif app.status == 'SUCCESS' %} bg-emerald-900/50 text-emerald-300 border border-emerald-700
+                                {% elif app.status == 'MANUAL_REVIEW_NEEDED' %} bg-orange-900/50 text-orange-300 border border-orange-700
                                 {% else %} bg-rose-900/50 text-rose-300
                                 {% endif %}">
                                 {{ app.get_status_display }}
@@ -62,15 +62,12 @@
                                     <a href="{% url 'start_automation' app.id %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded-md shadow text-xs transition-all inline-block">
                                         Ignite Hunter Engine
                                     </a>
-                                {% elif app.status == 'AWAITING_OTP' %}
-                                    <form action="{% url 'submit_otp' app.id %}" method="POST" class="flex gap-2">
-                                        {% csrf_token %}
-                                        <input type="text" name="otp_code" placeholder="SMS OTP" maxlength="6" required autocomplete="off"
-                                               class="bg-slate-900 border border-slate-600 text-amber-300 placeholder-slate-500 px-3 py-1.5 text-xs rounded-md focus:outline-none focus:border-amber-400 font-mono w-24 tracking-widest text-center">
-                                        <button type="submit" class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-3 py-1.5 rounded-md text-xs transition-colors">
-                                            Inject Token
-                                        </button>
-                                    </form>
+                                {% elif app.status == 'FINALIZING' %}
+                                    <span class="text-xs text-amber-400 font-mono animate-pulse">⚡ Submitting application…</span>
+                                {% elif app.status == 'SUCCESS' %}
+                                    <span class="text-xs text-emerald-400 font-mono">✓ Completed</span>
+                                {% elif app.status == 'MANUAL_REVIEW_NEEDED' %}
+                                    <span class="text-xs text-orange-400 font-mono">⚠ Manual review needed</span>
                                 {% else %}
                                     <span class="text-xs text-slate-500 font-mono italic">Playwright engine controlling context...</span>
                                 {% endif %}
@@ -101,10 +98,13 @@
                         const badge = document.querySelector(`[data-app-id="${item.id}"]`);
                         if (badge) {
                             let currentText = badge.innerText.trim();
-                            // If data sync states fluctuate across operational thresholds, trigger reload to reconstruct input forms
-                            if (currentText === 'Pending Slot Check' && item.status === 'PROCESSING' || 
-                                currentText === 'Filling Form on Irembo' && item.status === 'AWAITING_OTP' ||
-                                item.status === 'SUCCESS') {
+                            // Reload to reconstruct row controls when status advances
+                            if (
+                                currentText === 'Pending Slot Check' && item.status === 'PROCESSING' ||
+                                currentText === 'Filling Form on Irembo' && item.status === 'FINALIZING' ||
+                                item.status === 'SUCCESS' ||
+                                item.status === 'MANUAL_REVIEW_NEEDED'
+                            ) {
                                 window.location.reload();
                             }
                         }
