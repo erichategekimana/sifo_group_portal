@@ -11,12 +11,14 @@ $VenvPath = Join-Path $ProjectRoot "venv"
 $PythonExe = Join-Path $VenvPath "Scripts\python.exe"
 $ManagePy = Join-Path $ProjectRoot "irembo_automation\manage.py"
 $LogFile = Join-Path $ProjectRoot "logs\server.log"
+$ErrFile = Join-Path $ProjectRoot "logs\server_error.log"
 
 # Ensure log directory exists
 $LogDir = Split-Path $LogFile -Parent
 if (!(Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 
 function Log($msg) { "$(Get-Date -Format o): $msg" | Out-File $LogFile -Append }
+function LogError($msg) { "$(Get-Date -Format o): $msg" | Out-File $ErrFile -Append }
 
 Log "Starting Irembo Bot service script. ProjectRoot=$ProjectRoot"
 
@@ -67,7 +69,7 @@ Log "Starting Django on 0.0.0.0:$Port using $PythonExe"
 
 $args = "`"$ManagePy`" runserver --noreload 0.0.0.0:$Port"
 try {
-    $proc = Start-Process -FilePath $PythonExe -ArgumentList $args -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile -PassThru
+    $proc = Start-Process -FilePath $PythonExe -ArgumentList $args -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $ErrFile -PassThru
     Log "Django process started, PID=$($proc.Id)"
     # Wait a short while and check if process is still running
     Start-Sleep -Seconds 2
