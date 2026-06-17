@@ -13,9 +13,14 @@
                 <h1 class="text-4xl font-bold tracking-tight text-emerald-400">Irembo Automation Portal</h1>
                 <p class="text-slate-400 text-sm mt-1">Complete Application Management System</p>
             </div>
-            <a href="{% url 'create_application' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
-                ➕ Create New Application
-            </a>
+            <div class="flex gap-3">
+                <a href="{% url 'activity_log' %}" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    📊 Activity Log
+                </a>
+                <a href="{% url 'create_application' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    ➕ Create New Application
+                </a>
+            </div>
         </div>
 
         <!-- Messages -->

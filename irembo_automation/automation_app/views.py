@@ -1,10 +1,12 @@
 import threading
+from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
 from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.utils import timezone
 from .models import ClientApplication
 from automation_app.automation_engine import IremboAutomationEngine
 from automation_app.automation_engine.utils import run_in_db_thread
@@ -211,3 +213,27 @@ def api_status_feed(request):
     """Asynchronous JSON polling feed utilized by dashboard JavaScript tickers."""
     applications_data = list(ClientApplication.objects.values('id', 'status', 'billing_number'))
     return JsonResponse({'applications': applications_data})
+
+def activity_log(request):
+    """Display recent activities from the past 3 months."""
+    # Calculate date 3 months ago
+    three_months_ago = timezone.now() - timedelta(days=90)
+    
+    # Get all applications updated in the last 3 months
+    recent_activities = ClientApplication.objects.filter(
+        updated_at__gte=three_months_ago
+    ).order_by('-updated_at')
+    
+    # Pagination
+    paginator = Paginator(recent_activities, 50)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'page_obj': page_obj,
+        'activities': page_obj.object_list,
+        'three_months_ago': three_months_ago,
+    }
+    return render(request, 'automation/activity_log.html', context)
+
+
