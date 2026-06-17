@@ -2,94 +2,234 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Irembo Gatekeeper Admin Panel</title>
+    <title>Irembo Automation Admin Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-8">
 
-    <header class="max-w-7xl mx-auto mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight text-emerald-400">Irembo Automation Portal</h1>
-            <p class="text-slate-400 text-sm mt-1">Active Production Outpost Monitoring Interface</p>
+    <header class="max-w-7xl mx-auto mb-8">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-4 mb-6">
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight text-emerald-400">Irembo Automation Portal</h1>
+                <p class="text-slate-400 text-sm mt-1">Complete Application Management System</p>
+            </div>
+            <a href="{% url 'create_application' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                ➕ Create New Application
+            </a>
         </div>
-        <div class="bg-slate-800 px-4 py-2 rounded-lg text-xs font-mono text-slate-300 border border-slate-700">
-            Workstation Footprint: <span class="text-amber-400 font-bold">Windows 11 Alignment Mode</span>
+
+        <!-- Messages -->
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if message.tags %}bg-{{ message.tags }}-900/50 border border-{{ message.tags }}-700{% else %}bg-blue-900/50 border border-blue-700{% endif %} text-slate-100">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <!-- Search, Filter & Sort Bar -->
+        <div class="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-6">
+            <form method="get" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <!-- Search -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 mb-2">Search</label>
+                        <input type="text" name="q" value="{{ query }}" placeholder="Name, ID, Phone, Email..." 
+                            class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                    </div>
+                    
+                    <!-- Status Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 mb-2">Status</label>
+                        <select name="status" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">All Statuses</option>
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- Payment Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 mb-2">Payment Status</label>
+                        <select name="payment" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">All Payments</option>
+                            {% for value, label in payment_choices %}
+                                <option value="{{ value }}" {% if payment_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- Sort -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 mb-2">Sort By</label>
+                        <select name="sort" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="-created_at" {% if sort_by == '-created_at' %}selected{% endif %}>Newest First</option>
+                            <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Oldest First</option>
+                            <option value="first_name" {% if sort_by == 'first_name' %}selected{% endif %}>Name (A-Z)</option>
+                            <option value="-first_name" {% if sort_by == '-first_name' %}selected{% endif %}>Name (Z-A)</option>
+                            <option value="status" {% if sort_by == 'status' %}selected{% endif %}>Status</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Search Button -->
+                    <div class="flex items-end">
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded transition-all text-sm">
+                            🔍 Search & Filter
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
     </header>
 
     <main class="max-w-7xl mx-auto">
-        <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-slate-750 text-slate-300 uppercase text-xs tracking-wider border-b border-slate-700">
-                        <th class="p-4">Applicant Profile</th>
-                        <th class="p-4">National ID / Phone</th>
-                        <th class="p-4">Category</th>
-                        <th class="p-4">Engine Pipeline Status</th>
-                        <th class="p-4">Operator Control Hub</th>
-                        <th class="p-4">Billing Reference</th>
-                    </tr>
-                </thead>
-                <tbody id="dashboard-rows">
-                    {% for app in applications %}
-                    <tr id="row-{{ app.id }}" class="border-b border-slate-700 hover:bg-slate-750 transition-colors">
-                        <td class="p-4">
-                            <div class="font-bold text-sm text-slate-200">{{ app.first_name }} {{ app.last_name }}</div>
-                            <div class="text-xs text-slate-400 font-mono mt-0.5">{{ app.email|default:"No email attached" }}</div>
-                        </td>
-                        <td class="p-4">
-                            <div class="text-sm font-mono text-slate-300">{{ app.national_id }}</div>
-                            <div class="text-xs text-slate-400 mt-0.5">{{ app.phone_number }}</div>
-                        </td>
-                        <td class="p-4 text-sm font-semibold text-amber-400">
-                            {{ app.category_or_provisional }}
-                        </td>
-                        <td class="p-4 font-semibold text-sm">
-                            <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
-                                {% if app.status == 'PENDING' %} bg-slate-700 text-slate-300
-                                {% elif app.status == 'PROCESSING' %} bg-blue-900/60 text-blue-300 border border-blue-700/50 animate-pulse
-                                {% elif app.status == 'FINALIZING' %} bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse
-                                {% elif app.status == 'SUCCESS' %} bg-emerald-900/50 text-emerald-300 border border-emerald-700
-                                {% elif app.status == 'MANUAL_REVIEW_NEEDED' %} bg-orange-900/50 text-orange-300 border border-orange-700
-                                {% else %} bg-rose-900/50 text-rose-300
-                                {% endif %}">
-                                {{ app.get_status_display }}
-                            </span>
-                        </td>
-                        <td class="p-4 text-sm">
-                            <div id="control-container-{{ app.id }}">
+        <form method="post" action="{% url 'bulk_action' %}" id="bulk-form">
+            {% csrf_token %}
+            
+            <!-- Bulk Actions Bar -->
+            <div class="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4 flex flex-wrap gap-2 items-center">
+                <span class="text-sm text-slate-400">Bulk Actions:</span>
+                <button type="button" onclick="performAction('run_engine')" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    ▶ Run Automation
+                </button>
+                <button type="button" onclick="performAction('mark_paid')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    ✓ Mark Paid
+                </button>
+                <button type="button" onclick="performAction('mark_unpaid')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    ✕ Mark Unpaid
+                </button>
+                <button type="button" onclick="performAction('delete')" class="bg-red-600 hover:bg-red-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    🗑 Delete Selected
+                </button>
+                <input type="hidden" name="action" id="bulk-action-input">
+            </div>
+
+            <!-- Applications Table -->
+            <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-750 text-slate-300 uppercase text-xs tracking-wider border-b border-slate-700">
+                            <th class="p-4 w-10"><input type="checkbox" id="select-all" class="w-4 h-4 bg-slate-700 border border-slate-600 rounded cursor-pointer"></th>
+                            <th class="p-4">Applicant Profile</th>
+                            <th class="p-4">National ID / Phone</th>
+                            <th class="p-4">Category</th>
+                            <th class="p-4">Engine Pipeline Status</th>
+                            <th class="p-4">Payment</th>
+                            <th class="p-4">Actions</th>
+                            <th class="p-4">Billing Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-rows">
+                        {% for app in applications %}
+                        <tr id="row-{{ app.id }}" class="border-b border-slate-700 hover:bg-slate-750 transition-colors">
+                            <td class="p-4">
+                                <input type="checkbox" name="selected_ids" value="{{ app.id }}" class="app-checkbox w-4 h-4 bg-slate-700 border border-slate-600 rounded cursor-pointer">
+                            </td>
+                            <td class="p-4">
+                                <div class="font-bold text-sm text-slate-200">{{ app.first_name }} {{ app.last_name }}</div>
+                                <div class="text-xs text-slate-400 font-mono mt-0.5">{{ app.email|default:"No email" }}</div>
+                            </td>
+                            <td class="p-4">
+                                <div class="text-sm font-mono text-slate-300">{{ app.national_id }}</div>
+                                <div class="text-xs text-slate-400 mt-0.5">{{ app.phone_number }}</div>
+                            </td>
+                            <td class="p-4 text-sm font-semibold text-amber-400">
+                                {{ app.provisional_number|default:app.category }}
+                            </td>
+                            <td class="p-4 font-semibold text-sm">
+                                <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
+                                    {% if app.status == 'PENDING' %} bg-slate-700 text-slate-300
+                                    {% elif app.status == 'PROCESSING' %} bg-blue-900/60 text-blue-300 border border-blue-700/50 animate-pulse
+                                    {% elif app.status == 'FINALIZING' %} bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse
+                                    {% elif app.status == 'SUCCESS' %} bg-emerald-900/50 text-emerald-300 border border-emerald-700
+                                    {% elif app.status == 'MANUAL_REVIEW_NEEDED' %} bg-orange-900/50 text-orange-300 border border-orange-700
+                                    {% else %} bg-rose-900/50 text-rose-300
+                                    {% endif %}">
+                                    {{ app.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="p-4 text-xs font-semibold">
+                                <span class="px-2 py-1 rounded {% if app.payment_status == 'PAID' %}bg-emerald-900/50 text-emerald-300{% elif app.payment_status == 'UNPAID' %}bg-red-900/50 text-red-300{% else %}bg-slate-700 text-slate-300{% endif %}">
+                                    {{ app.get_payment_status_display }}
+                                </span>
+                            </td>
+                            <td class="p-4 text-sm space-x-2 flex">
                                 {% if app.status == 'PENDING' or app.status == 'FAILED' or app.status == 'CANCELED' %}
-                                    <a href="{% url 'start_automation' app.id %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded-md shadow text-xs transition-all inline-block">
-                                        Ignite Hunter Engine
+                                    <a href="{% url 'start_automation' app.id %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                        ▶ Run
                                     </a>
-                                {% elif app.status == 'FINALIZING' %}
-                                    <span class="text-xs text-amber-400 font-mono animate-pulse">⚡ Submitting application…</span>
-                                {% elif app.status == 'SUCCESS' %}
-                                    <span class="text-xs text-emerald-400 font-mono">✓ Completed</span>
-                                {% elif app.status == 'MANUAL_REVIEW_NEEDED' %}
-                                    <span class="text-xs text-orange-400 font-mono">⚠ Manual review needed</span>
-                                {% else %}
-                                    <span class="text-xs text-slate-500 font-mono italic">Playwright engine controlling context...</span>
                                 {% endif %}
-                            </div>
-                        </td>
-                        <td class="p-4 font-mono font-bold text-sm tracking-wide text-emerald-400" id="billing-container-{{ app.id }}">
-                            {{ app.billing_number|default:"—" }}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" class="p-8 text-center text-slate-500 text-sm">
-                            No active client applications found inside PostgreSQL database.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                                <a href="{% url 'edit_application' app.id %}" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                    ✎ Edit
+                                </a>
+                                <form method="post" action="{% url 'delete_application' app.id %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" onclick="return confirm('Delete this application?')" class="bg-red-600 hover:bg-red-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                        ✕ Delete
+                                    </button>
+                                </form>
+                            </td>
+                            <td class="p-4 font-mono font-bold text-sm tracking-wide text-emerald-400" id="billing-container-{{ app.id }}">
+                                {{ app.billing_number|default:"—" }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-slate-500 text-sm">
+                                No applications found. <a href="{% url 'create_application' %}" class="text-emerald-400 hover:text-emerald-300 font-semibold">Create one now →</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="mt-6 flex justify-center gap-2">
+            {% if page_obj.has_previous %}
+                <a href="?page=1&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-2 rounded text-sm transition-all">First</a>
+                <a href="?page={{ page_obj.previous_page_number }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-2 rounded text-sm transition-all">← Previous</a>
+            {% endif %}
+            
+            <span class="px-4 py-2 text-slate-400 text-sm">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-2 rounded text-sm transition-all">Next →</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-2 rounded text-sm transition-all">Last</a>
+            {% endif %}
         </div>
+        {% endif %}
     </main>
 
     <script>
+        // Select All Checkbox
+        document.getElementById('select-all').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.app-checkbox');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+
+        // Bulk Action Handler
+        function performAction(action) {
+            const selected = document.querySelectorAll('.app-checkbox:checked');
+            if (selected.length === 0) {
+                alert('Please select at least one application');
+                return;
+            }
+            
+            if (action === 'delete' && !confirm('Are you sure you want to delete ' + selected.length + ' application(s)?')) {
+                return;
+            }
+            
+            document.getElementById('bulk-action-input').value = action;
+            document.getElementById('bulk-form').submit();
+        }
+
+        // Live Status Update
         function updateDashboardMetrics() {
             fetch('/api/status/')
                 .then(response => response.json())
@@ -98,7 +238,6 @@
                         const badge = document.querySelector(`[data-app-id="${item.id}"]`);
                         if (badge) {
                             let currentText = badge.innerText.trim();
-                            // Reload to reconstruct row controls when status advances
                             if (
                                 currentText === 'Pending Slot Check' && item.status === 'PROCESSING' ||
                                 currentText === 'Filling Form on Irembo' && item.status === 'FINALIZING' ||
@@ -110,7 +249,7 @@
                         }
                     });
                 })
-                .catch(err => console.error("Sync error tracking interface stream updates: ", err));
+                .catch(err => console.error("Status update error: ", err));
         }
         setInterval(updateDashboardMetrics, 2500);
     </script>

@@ -1,0 +1,100 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div id="content-main">
+    <!-- Statistics Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="stat-card" style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; text-align: center;">
+            <div style="font-size: 2rem; font-weight: 600; color: #e2e8f0;">{{ total }}</div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;">Total</div>
+        </div>
+        <div class="stat-card" style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; text-align: center;">
+            <div style="font-size: 2rem; font-weight: 600; color: #facc15;">{{ pending }}</div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;">Pending</div>
+        </div>
+        <div class="stat-card" style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; text-align: center;">
+            <div style="font-size: 2rem; font-weight: 600; color: #60a5fa;">{{ processing }}</div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;">Processing</div>
+        </div>
+        <div class="stat-card" style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; text-align: center;">
+            <div style="font-size: 2rem; font-weight: 600; color: #34d399;">{{ success }}</div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;">Success</div>
+        </div>
+        <div class="stat-card" style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; text-align: center;">
+            <div style="font-size: 2rem; font-weight: 600; color: #f87171;">{{ failed }}</div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;">Failed</div>
+        </div>
+    </div>
+
+    <!-- Application List Table -->
+    <div style="background: #0f172a; border-radius: 16px; border: 1px solid #1e293b; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3);">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+            <thead style="background: #1e293b; color: #94a3b8; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em;">
+                <tr>
+                    <th style="padding: 12px 16px; text-align: left;">Applicant</th>
+                    <th style="padding: 12px 16px; text-align: left;">ID / Phone</th>
+                    <th style="padding: 12px 16px; text-align: left;">Category</th>
+                    <th style="padding: 12px 16px; text-align: left;">Status</th>
+                    <th style="padding: 12px 16px; text-align: left;">Action</th>
+                    <th style="padding: 12px 16px; text-align: left;">Billing</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in applications %}
+                <tr style="border-bottom: 1px solid #1e293b; transition: background 0.2s;" class="app-row" data-app-id="{{ app.id }}">
+                    <td style="padding: 12px 16px;">
+                        <div style="font-weight: 500; color: #e2e8f0;">{{ app.first_name }} {{ app.last_name }}</div>
+                        <div style="font-size: 0.7rem; color: #64748b;">{{ app.email|default:"—" }}</div>
+                    </td>
+                    <td style="padding: 12px 16px; font-family: monospace; font-size: 0.75rem; color: #94a3b8;">
+                        {{ app.national_id }}<br><span style="color: #64748b;">{{ app.phone_number }}</span>
+                    </td>
+                    <td style="padding: 12px 16px; font-weight: 600; color: #fbbf24;">{{ app.category }}</td>
+                    <td style="padding: 12px 16px;">
+                        <span class="status-badge status-{{ app.status|lower }}">
+    {{ app.get_status_display }}
+</span>
+                    </td>
+                    <td style="padding: 12px 16px;">
+                        {% if app.status == 'PENDING' or app.status == 'FAILED' or app.status == 'CANCELED' %}
+                            <a href="{% url 'start_automation' app.id %}" class="action-btn" style="
+                                display: inline-block;
+                                background: #059669;
+                                color: white;
+                                padding: 4px 14px;
+                                border-radius: 6px;
+                                text-decoration: none;
+                                font-size: 0.7rem;
+                                font-weight: 500;
+                                transition: background 0.2s;
+                            " onmouseover="this.style.background='#10b981'" onmouseout="this.style.background='#059669'">
+                                ▶ Run
+                            </a>
+                        {% elif app.status == 'PROCESSING' or app.status == 'FINALIZING' %}
+                            <span style="color: #60a5fa; font-size: 0.7rem;">⏳ Running</span>
+                        {% elif app.status == 'SUCCESS' %}
+                            <span style="color: #34d399; font-size: 0.7rem;">✓ Done</span>
+                        {% elif app.status == 'MANUAL_REVIEW_NEEDED' %}
+                            <span style="color: #fb923c; font-size: 0.7rem;">⚠ Review</span>
+                        {% else %}
+                            <span style="color: #64748b; font-size: 0.7rem;">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px 16px; font-family: monospace; font-weight: 600; color: #34d399;">
+                        {{ app.billing_number|default:"—" }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="padding: 32px; text-align: center; color: #64748b; font-size: 0.875rem;">No applications found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Additional admin modules (like auth groups, etc.) can be placed here if needed -->
+    {{ block.super }}
+</div>
+{% endblock %}

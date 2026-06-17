@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create New Application - Irembo Automation</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="mb-8">
+            <a href="{% url 'dashboard' %}" class="text-emerald-400 hover:text-emerald-300">← Back to Dashboard</a>
+            <h1 class="text-4xl font-bold tracking-tight text-emerald-400 mt-4">Create New Application</h1>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-lg bg-red-900/50 border border-red-700 text-slate-100">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden p-6">
+            <form method="post" class="space-y-6">
+                {% csrf_token %}
+                
+                <!-- Personal Information Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Personal Information</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">First Name *</label>
+                            <input type="text" name="first_name" required class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Last Name *</label>
+                            <input type="text" name="last_name" required class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">National ID (16 digits) *</label>
+                            <input type="text" name="national_id" required pattern="\d{16}" maxlength="16" placeholder="1234567890123456" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Birth Date *</label>
+                            <input type="date" name="birth_date" required class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Phone Number *</label>
+                            <input type="text" name="phone_number" required placeholder="0788123456" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                            <input type="email" name="email" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Licensing Information Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Licensing Information</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Category (e.g., A, B, B2, C1, D) *</label>
+                            <input type="text" name="category" required placeholder="B" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Provisional Number (for upgrades)</label>
+                            <input type="text" name="provisional_number" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Information Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Payment Status</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Payment Status *</label>
+                        <select name="payment_status" required class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                            {% for value, label in payment_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-4 pt-6">
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                        ✓ Create Application
+                    </button>
+                    <a href="{% url 'dashboard' %}" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all text-center">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

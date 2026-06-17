@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Application - Irembo Automation</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="mb-8">
+            <a href="{% url 'dashboard' %}" class="text-emerald-400 hover:text-emerald-300">← Back to Dashboard</a>
+            <h1 class="text-4xl font-bold tracking-tight text-emerald-400 mt-4">Edit Application</h1>
+            <p class="text-slate-400 text-sm mt-2">{{ app.first_name }} {{ app.last_name }} (ID: {{ app.national_id }})</p>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-lg bg-red-900/50 border border-red-700 text-slate-100">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden p-6">
+            <form method="post" class="space-y-6">
+                {% csrf_token %}
+                
+                <!-- Personal Information Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Personal Information</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">First Name</label>
+                            <input type="text" name="first_name" value="{{ app.first_name }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Last Name</label>
+                            <input type="text" name="last_name" value="{{ app.last_name }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-300 mb-2">National ID (Read-only)</label>
+                            <input type="text" value="{{ app.national_id }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                            <input type="email" name="email" value="{{ app.email }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Licensing Information Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Licensing Information</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Category</label>
+                            <input type="text" name="category" value="{{ app.category }}" placeholder="B" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Provisional Number (Read-only)</label>
+                            <input type="text" value="{{ app.provisional_number }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Status Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Process Status</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Status</label>
+                            <select name="status" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                {% for value, label in status_choices %}
+                                    <option value="{{ value }}" {% if app.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Payment Status</label>
+                            <select name="payment_status" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                {% for value, label in payment_choices %}
+                                    <option value="{{ value }}" {% if app.payment_status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metadata Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Automation Metadata (Read-only)</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Billing Number</label>
+                            <input type="text" value="{{ app.billing_number }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Application Number</label>
+                            <input type="text" value="{{ app.application_number }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Created At</label>
+                            <input type="text" value="{{ app.created_at }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Last Updated</label>
+                            <input type="text" value="{{ app.updated_at }}" disabled class="w-full bg-slate-700 border border-slate-600 text-slate-400 px-4 py-2 rounded cursor-not-allowed">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-4 pt-6">
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                        ✓ Save Changes
+                    </button>
+                    <a href="{% url 'dashboard' %}" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all text-center">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

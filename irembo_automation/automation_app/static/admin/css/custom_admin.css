@@ -1,0 +1,145 @@
+/* Custom Admin Styling */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+#header {
+    background: #0f172a !important;
+    border-bottom: 1px solid #1e293b;
+    padding: 8px 24px;
+}
+
+#branding h1 {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+#branding h1 a {
+    color: #e2e8f0 !important;
+}
+
+#content {
+    background: transparent;
+}
+
+.module h2, .module caption {
+    background: #1e293b !important;
+    color: #94a3b8 !important;
+    font-weight: 500;
+}
+
+/* Table styling */
+table {
+    background: transparent;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+th, td {
+    border-color: #1e293b !important;
+}
+
+tr:hover {
+    background: #1e293b;
+}
+
+/* Buttons */
+.submit-row input, .button {
+    background: #059669 !important;
+    color: white !important;
+    border-radius: 8px !important;
+    border: none !important;
+    padding: 8px 20px !important;
+    font-weight: 500 !important;
+    transition: background 0.2s;
+}
+.submit-row input:hover, .button:hover {
+    background: #10b981 !important;
+}
+
+/* Dashboard stat cards */
+.stat-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+}
+
+/* Status badge animation */
+.status-badge[data-status="PROCESSING"],
+.status-badge[data-status="FINALIZING"] {
+    animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    table { font-size: 0.75rem; }
+    th, td { padding: 8px; }
+}
+
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.status-pending {
+    background: #334155;
+    color: #94a3b8;
+    border-color: #475569;
+}
+.status-processing {
+    background: #1e3a5f;
+    color: #60a5fa;
+    border-color: #3b82f680;
+}
+.status-finalizing {
+    background: #4b3d1a;
+    color: #fbbf24;
+    border-color: #fbbf2480;
+}
+.status-success {
+    background: #14532d;
+    color: #34d399;
+    border-color: #34d39980;
+}
+.status-manual_review_needed {
+    background: #4b2d1a;
+    color: #fb923c;
+    border-color: #fb923c80;
+}
+.status-failed {
+    background: #4b1a2a;
+    color: #f87171;
+    border-color: #f8717180;
+}
+.status-canceled {
+    background: #4b1a2a;
+    color: #f87171;
+    border-color: #f8717180;
+}
+
+.status-processing,
+.status-finalizing {
+    animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}

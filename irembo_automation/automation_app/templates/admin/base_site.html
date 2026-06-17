@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}Irembo Automation Admin{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static 'admin/css/custom_admin.css' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block branding %}
+    <div id="site-name">
+        <a href="{% url 'admin:index' %}">
+            <span style="font-weight: 700; color: #10b981;">Irembo</span>
+            <span style="font-weight: 300; color: #94a3b8;">Automation</span>
+        </a>
+    </div>
+{% endblock %}
+
+{% block nav-global %}
+    <div style="float: right; padding: 8px 16px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.75rem; color: #94a3b8; border: 1px solid rgba(255,255,255,0.08);">
+        ⚡ Live Monitor
+    </div>
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'admin/js/custom_admin.js' %}" defer></script>
+{% endblock %}

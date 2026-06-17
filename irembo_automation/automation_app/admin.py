@@ -5,8 +5,9 @@ from django.contrib import messages
 from .models import ClientApplication
 # Direct import of your background thread offloader from views
 from .views import run_automation_worker 
+from django.contrib.admin import AdminSite
+from django.shortcuts import render
 
-@admin.register(ClientApplication)
 class ClientApplicationAdmin(admin.ModelAdmin):
     # -----------------------------------------------------------------------
     # 1. UI Layout & Scannability Configuration
@@ -125,3 +126,35 @@ class ClientApplicationAdmin(admin.ModelAdmin):
             'classes': ('collapse',), 
         }),
     )
+
+
+
+
+class CustomAdminSite(AdminSite):
+    site_header = 'Automation Admin'
+    site_title = 'Automation Admin Portal'
+    index_title = 'Automation Dashboard'
+
+    def index(self, request, extra_context=None):
+        apps = ClientApplication.objects.all()
+        total = apps.count()
+        pending = apps.filter(status='PENDING').count()
+        processing = apps.filter(status='PROCESSING').count()
+        success = apps.filter(status='SUCCESS').count()
+        failed = apps.filter(status='FAILED').count()
+
+        context = {
+            'applications': apps.order_by('-created_at')[:50],  # show recent 50
+            'total': total,
+            'pending': pending,
+            'processing': processing,
+            'success': success,
+            'failed': failed,
+            'app_list': self.get_app_list(request),  # keep default admin app list
+        }
+        context.update(extra_context or {})
+        return render(request, 'admin/index.html', context)
+
+
+custom_admin_site = CustomAdminSite(name='automation_admin')
+custom_admin_site.register(ClientApplication, ClientApplicationAdmin)
