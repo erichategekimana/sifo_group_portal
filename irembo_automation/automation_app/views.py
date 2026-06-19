@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import ClientApplication
 from automation_app.automation_engine import IremboAutomationEngine
-from automation_app.automation_engine.utils import run_in_db_thread
+from automation_app.automation_engine.utils import run_in_db_thread, AbortTaskException
 from playwright.sync_api import sync_playwright  # type: ignore[import]
 
 def run_automation_worker(application_id):
@@ -60,9 +60,10 @@ def run_automation_worker(application_id):
         def _log_attempt_start():
             app = ClientApplication.objects.get(id=application_id)
             app.status = ClientApplication.ProcessStatus.PROCESSING
+            app.user_response = None
             timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
             app.log_output += f"[{timestamp}] [INFO] Starting attempt {attempt} of {max_attempts}...\n"
-            app.save(update_fields=["status", "log_output"])
+            app.save(update_fields=["status", "log_output", "user_response"])
             return app
 
         application = run_in_db_thread(_log_attempt_start)
@@ -95,6 +96,19 @@ def run_automation_worker(application_id):
                     break  # Success! Exit retry loop
                 else:
                     raise Exception("Slot polling finished without securing a billing code.")
+
+        except AbortTaskException as e:
+            error_message = str(e)
+            print(f"[Worker Thread] Task aborted cleanly for application {application_id}: {error_message}")
+            def _log_abort():
+                app = ClientApplication.objects.get(id=application_id)
+                app.status = ClientApplication.ProcessStatus.CANCELED
+                app.last_error = error_message
+                timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+                app.log_output += f"[{timestamp}] [INFO] {error_message}\n"
+                app.save(update_fields=["status", "last_error", "log_output"])
+            run_in_db_thread(_log_abort)
+            break  # Exit retry loop immediately
 
         except Exception as e:
             error_message = str(e)
@@ -299,7 +313,7 @@ def start_automation(request, application_id):
 def api_status_feed(request):
     """Asynchronous JSON polling feed utilized by dashboard JavaScript tickers."""
     applications_data = list(ClientApplication.objects.values(
-        'id', 'status', 'billing_number', 'retry_attempts', 'last_error'
+        'id', 'status', 'billing_number', 'retry_attempts', 'last_error', 'user_response'
     ))
     return JsonResponse({'applications': applications_data})
 
@@ -332,5 +346,19 @@ def activity_log(request):
         'three_months_ago': three_months_ago,
     }
     return render(request, 'automation/activity_log.html', context)
+
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+@require_POST
+def api_respond_session(request, application_id):
+    """API endpoint to receive user response to auth pause prompt."""
+    action = request.POST.get('action')
+    if action in ['continue', 'sign_in']:
+        app = get_object_or_404(ClientApplication, id=application_id)
+        app.user_response = action
+        app.save(update_fields=['user_response'])
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'error': 'Invalid action'}, status=400)
 
 

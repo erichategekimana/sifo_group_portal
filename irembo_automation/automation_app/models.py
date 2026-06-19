@@ -84,6 +84,7 @@ class ClientApplication(models.Model):
     retry_attempts = models.PositiveIntegerField(default=0)
     last_error = models.TextField(blank=True, null=True)
     log_output = models.TextField(blank=True, null=True, help_text="Detailed execution logs for the application task")
+    user_response = models.CharField(max_length=50, blank=True, null=True, help_text="Temporary field for user interaction during process")
 
     # Metadata Audit Trail
     created_at = models.DateTimeField(auto_now_add=True)

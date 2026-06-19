@@ -259,6 +259,27 @@
         </div>
     </div>
 
+    <!-- Global Auth Warning Modal -->
+    <div id="global-auth-modal" class="fixed inset-0 flex items-start justify-center p-6 z-[60] hidden bg-black/50 backdrop-blur-sm transition-all">
+        <div class="bg-amber-950/90 border border-amber-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative translate-y-4">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-full bg-amber-900/50 flex items-center justify-center text-amber-300 font-bold text-2xl shrink-0 border border-amber-800">⚠️</div>
+                <div class="flex-1">
+                    <h3 class="text-lg font-bold text-amber-300 tracking-wider">ACTION REQUIRED: Authentication Missing</h3>
+                    <p class="text-sm mt-1 text-amber-100/80 leading-relaxed font-medium">The automation engine paused because the active Irembo session is missing or expired. You have less than 10 seconds to respond before it automatically continues.</p>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-3 border-t border-amber-900/50 pt-5">
+                <button type="button" onclick="respondSessionGlobal('continue')" class="bg-amber-950 hover:bg-amber-900 text-amber-200 border border-amber-800 font-semibold px-5 py-2.5 rounded-xl transition-all">
+                    Continue Anyway
+                </button>
+                <button type="button" onclick="respondSessionGlobal('sign_in')" class="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-bold px-6 py-2.5 rounded-xl shadow-[0_0_15px_rgba(217,119,6,0.4)] transition-all">
+                    Sign In First (Abort Task)
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Select All Checkbox
         document.getElementById('select-all').addEventListener('change', function() {
@@ -300,7 +321,13 @@
             fetch('/api/status/')
                 .then(response => response.json())
                 .then(data => {
+                    let needsGlobalAuthId = null;
+
                     data.applications.forEach(item => {
+                        if (item.status === 'PROCESSING' && item.user_response === 'WAITING') {
+                            needsGlobalAuthId = item.id;
+                        }
+
                         const badge = document.querySelector(`[data-app-id="${item.id}"]`);
                         const billingCell = document.getElementById(`billing-container-${item.id}`);
 
@@ -351,10 +378,51 @@
                             }
                         }
                     });
+
+                    const globalModal = document.getElementById('global-auth-modal');
+                    if (globalModal) {
+                        if (needsGlobalAuthId) {
+                            window.globalAuthAppId = needsGlobalAuthId;
+                            if (globalModal.classList.contains('hidden')) {
+                                globalModal.classList.remove('hidden');
+                                playAlertSound(); // Play sound when it first appears
+                            }
+                        } else {
+                            globalModal.classList.add('hidden');
+                            window.globalAuthAppId = null;
+                        }
+                    }
                 })
                 .catch(err => console.error("Status update error: ", err));
         }
         setInterval(updateDashboardMetrics, 2500);
+
+        // --- Alert Sound Generator ---
+        function playAlertSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                
+                const audioCtx = new AudioContext();
+                function beep(freq, startTime, duration) {
+                    const oscillator = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.value = freq;
+                    gainNode.gain.setValueAtTime(0.3, startTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+                    oscillator.start(startTime);
+                    oscillator.stop(startTime + duration);
+                }
+                
+                beep(600, audioCtx.currentTime, 0.2);
+                beep(600, audioCtx.currentTime + 0.3, 0.2);
+            } catch (e) {
+                console.log("Audio play failed:", e);
+            }
+        }
 
         // --- Logs Modal Operations ---
         let activeLogAppId = null;
@@ -367,6 +435,7 @@
 
             const lines = rawLogs.split('\n');
             let html = '<div class="space-y-4">';
+
             let errorsList = [];
             let stepsList = [];
 
@@ -518,6 +587,60 @@
                 .catch(err => {
                     console.error("Error fetching logs:", err);
                 });
+        }
+
+        function respondSession(action) {
+            if (!activeLogAppId) return;
+            const card = document.getElementById('session-prompt-card');
+            if (card) {
+                card.style.opacity = '0.5';
+                card.querySelectorAll('button').forEach(btn => btn.disabled = true);
+            }
+            
+            const formData = new FormData();
+            formData.append('action', action);
+            fetch(`/api/respond/${activeLogAppId}/`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log(`Action ${action} submitted successfully.`);
+                } else {
+                    console.error("Action submission failed:", data);
+                }
+            })
+            .catch(err => {
+                console.error("Error submitting action:", err);
+            });
+        }
+
+        function respondSessionGlobal(action) {
+            if (!window.globalAuthAppId) return;
+            const modal = document.getElementById('global-auth-modal');
+            if (modal) {
+                modal.style.opacity = '0.5';
+                modal.querySelectorAll('button').forEach(btn => btn.disabled = true);
+            }
+            
+            const formData = new FormData();
+            formData.append('action', action);
+            fetch(`/api/respond/${window.globalAuthAppId}/`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log(`Global action ${action} submitted successfully.`);
+                } else {
+                    console.error("Global action submission failed:", data);
+                }
+            })
+            .catch(err => {
+                console.error("Error submitting global action:", err);
+            });
         }
     </script>
 </body>

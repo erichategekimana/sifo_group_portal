@@ -1,12 +1,41 @@
 # automation_app/automation_engine/navigation.py
 import os
 import time
+from .utils import AbortTaskException
 
 class NavigationMixin:
     def navigate_to_booking_form(self, national_id, verification_data):
         self.log_message("Navigating to Irembo home page...")
         self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
-        self.validate_agent_session(self.page) # Log a warning if not valid, but continue anyway to allow manual intervention.
+        # Check active session status
+        is_valid = self.validate_agent_session(self.page)
+        if not is_valid:
+            self.log_message("Active session is expired or missing. Waiting 10 seconds for user action (Continue or Sign In)...", level="WARNING")
+            
+            # Reset user_response field in DB to WAITING to trigger global popup
+            self.set_user_response("WAITING")
+            
+            start_time = time.time()
+            user_action = None
+            while time.time() - start_time < 10:
+                resp = self.get_user_response()
+                if resp in ["continue", "sign_in"]:
+                    user_action = resp
+                    break
+                time.sleep(0.5)
+            
+            # Clear response to hide popup
+            if user_action not in ["continue", "sign_in"]:
+                self.set_user_response(None)
+            
+            if user_action == "continue":
+                self.log_message("User chose to continue anyway. Proceeding with current state...")
+            elif user_action == "sign_in":
+                self.run_interactive_login()
+                self.log_message("Manual login finished. Aborting current task to allow a clean restart.", level="WARNING")
+                raise AbortTaskException("Task aborted after manual sign-in. Please re-run the application.")
+            else:
+                self.log_message("No response received within 10 seconds. Continuing with current state...")
 
         self.page.locator('text="Polisi"').click()
         time.sleep(1)
