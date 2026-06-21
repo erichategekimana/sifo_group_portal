@@ -32,6 +32,9 @@ class BrowserMixin:
             timezone_id=DEFAULT_TIMEZONE
         )
 
+        from .utils import load_session_state
+        load_session_state(self.context)
+
         Stealth().apply_stealth_sync(self.context)
 
         self.context.add_init_script("""

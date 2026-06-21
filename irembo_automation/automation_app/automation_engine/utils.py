@@ -40,6 +40,42 @@ def kill_browser_processes(user_data_dir):
         except Exception as e:
             print(f"[Engine] Error checking process {pid}: {e}")
 
+def save_session_state(context):
+    """
+    Export current browser context cookies and storage state to a local JSON file (state.json)
+    to serve as a persistent session backup.
+    """
+    import json
+    from .config import USER_DATA_DIR_PATH
+    filepath = os.path.abspath(os.path.join(os.path.dirname(USER_DATA_DIR_PATH), "state.json"))
+    try:
+        state = context.storage_state()
+        with open(filepath, 'w') as f:
+            json.dump(state, f, indent=2)
+        print(f"[Engine] Session state saved successfully to {filepath}")
+    except Exception as e:
+        print(f"[Engine] Failed to save session state: {e}")
+
+def load_session_state(context):
+    """
+    Restore previously saved cookies from state.json back into the active browser context.
+    """
+    import json
+    from .config import USER_DATA_DIR_PATH
+    filepath = os.path.abspath(os.path.join(os.path.dirname(USER_DATA_DIR_PATH), "state.json"))
+    if not os.path.exists(filepath):
+        print(f"[Engine] No session state backup file found at {filepath}")
+        return
+    try:
+        with open(filepath, 'r') as f:
+            state = json.load(f)
+        cookies = state.get("cookies", [])
+        if cookies:
+            context.add_cookies(cookies)
+            print(f"[Engine] Successfully rehydrated {len(cookies)} cookies from {filepath}")
+    except Exception as e:
+        print(f"[Engine] Failed to load session state backup: {e}")
+
 class AbortTaskException(Exception):
     """Exception raised when an automation task needs to be completely aborted and cancelled (e.g., when falling back to manual login)."""
     pass
@@ -201,6 +237,7 @@ class UtilsMixin:
 
     def close(self):
         if self.context:
+            save_session_state(self.context)
             self.context.close()
         if self.browser:
             self.browser.close()
