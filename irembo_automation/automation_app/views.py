@@ -91,36 +91,31 @@ def _run_automation_worker_locked(application_id):
         try:
             with sync_playwright() as p:
                 engine = IremboAutomationEngine(booking_record=application)
-                try:
-                    engine.initialize_stealth_browser(p, headless=False)
-                    engine.navigate_to_booking_form(
-                        national_id=application.national_id,
-                        verification_data=application.first_name
-                    )
-                    billing_id = engine.start_slot_polling()
-                    
-                    # Check status inside the DB in case slot secured & successfully completed
-                    def _get_final_status():
+                engine.initialize_stealth_browser(p, headless=False)
+                engine.navigate_to_booking_form(
+                    national_id=application.national_id,
+                    verification_data=application.first_name
+                )
+                billing_id = engine.start_slot_polling()
+                
+                # Check status inside the DB in case slot secured & successfully completed
+                def _get_final_status():
+                    app = ClientApplication.objects.get(id=application_id)
+                    return app.status, app.billing_number
+                
+                final_status, final_billing = run_in_db_thread(_get_final_status)
+                
+                if final_status in [ClientApplication.ProcessStatus.SUCCESS, ClientApplication.ProcessStatus.MANUAL_REVIEW_NEEDED] or final_billing:
+                    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+                    def _log_success():
                         app = ClientApplication.objects.get(id=application_id)
-                        return app.status, app.billing_number
-                    
-                    final_status, final_billing = run_in_db_thread(_get_final_status)
-                    
-                    if final_status in [ClientApplication.ProcessStatus.SUCCESS, ClientApplication.ProcessStatus.MANUAL_REVIEW_NEEDED] or final_billing:
-                        timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
-                        def _log_success():
-                            app = ClientApplication.objects.get(id=application_id)
-                            app.log_output += f"[{timestamp}] [INFO] Process completed successfully. Billing Code: {final_billing or 'N/A'}\n"
-                            app.save(update_fields=["log_output"])
-                        run_in_db_thread(_log_success)
-                        print(f"[Worker Thread] Process completed cleanly for ID {application.national_id}. Billing Code: {final_billing}")
-                        break  # Success! Exit retry loop
-                    else:
-                        raise Exception("Slot polling finished without securing a billing code.")
-                finally:
-                    if engine.context:
-                        from automation_app.automation_engine.utils import save_session_state
-                        save_session_state(engine.context)
+                        app.log_output += f"[{timestamp}] [INFO] Process completed successfully. Billing Code: {final_billing or 'N/A'}\n"
+                        app.save(update_fields=["log_output"])
+                    run_in_db_thread(_log_success)
+                    print(f"[Worker Thread] Process completed cleanly for ID {application.national_id}. Billing Code: {final_billing}")
+                    break  # Success! Exit retry loop
+                else:
+                    raise Exception("Slot polling finished without securing a billing code.")
 
         except AbortTaskException as e:
             error_message = str(e)
@@ -419,7 +414,7 @@ def open_session_manager_thread(lock):
             context = p.chromium.launch_persistent_context(
                 user_data_dir=USER_DATA_DIR_PATH,
                 headless=False,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=["--disable-blink-features=AutomationControlled", "--restore-last-session"],
                 user_agent=DEFAULT_USER_AGENT,
                 viewport=DEFAULT_VIEWPORT,
                 device_scale_factor=DEFAULT_DEVICE_SCALE_FACTOR,
@@ -430,10 +425,6 @@ def open_session_manager_thread(lock):
             )
             Stealth().apply_stealth_sync(context)
             
-            # Rehydrate cookies if backup state exists
-            from automation_app.automation_engine.utils import load_session_state, save_session_state
-            load_session_state(context)
-            
             if len(context.pages) > 0:
                 page = context.pages[0]
             else:
@@ -441,34 +432,11 @@ def open_session_manager_thread(lock):
                 
             page.goto("https://irembo.gov.rw/", wait_until="networkidle")
             
-            # Start a background thread to periodically save session state while open
-            import threading
-            stop_saving = threading.Event()
-            
-            def periodic_saver():
-                while not stop_saving.is_set():
-                    time.sleep(5)
-                    try:
-                        save_session_state(context)
-                    except Exception:
-                        break  # Context closed or connection lost
-            
-            saver_thread = threading.Thread(target=periodic_saver)
-            saver_thread.daemon = True
-            saver_thread.start()
-            
             # Wait until the user closes the window or 5 minutes pass
             try:
                 page.wait_for_event("close", timeout=300000)
             except Exception:
                 pass # Timeout or already closed
-                
-            stop_saving.set()
-            
-            try:
-                save_session_state(context)
-            except Exception:
-                pass
                 
             context.close()
     except Exception as e:

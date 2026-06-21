@@ -22,7 +22,7 @@ class BrowserMixin:
         self.context = p.chromium.launch_persistent_context(
             user_data_dir=self.user_data_dir,
             headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled", "--restore-last-session"],
             user_agent=DEFAULT_USER_AGENT,
             viewport=DEFAULT_VIEWPORT,
             device_scale_factor=DEFAULT_DEVICE_SCALE_FACTOR,
@@ -31,9 +31,6 @@ class BrowserMixin:
             locale=DEFAULT_LOCALE,
             timezone_id=DEFAULT_TIMEZONE
         )
-
-        from .utils import load_session_state
-        load_session_state(self.context)
 
         Stealth().apply_stealth_sync(self.context)
 
