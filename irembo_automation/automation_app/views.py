@@ -377,3 +377,53 @@ def api_respond_session(request, application_id):
     return JsonResponse({'error': 'Invalid action'}, status=400)
 
 
+def open_session_manager_thread():
+    try:
+        from playwright.sync_api import sync_playwright
+        from automation_app.automation_engine.config import (
+            USER_DATA_DIR_PATH, DEFAULT_USER_AGENT, DEFAULT_VIEWPORT,
+            DEFAULT_DEVICE_SCALE_FACTOR, DEFAULT_IS_MOBILE, DEFAULT_HAS_TOUCH,
+            DEFAULT_LOCALE, DEFAULT_TIMEZONE
+        )
+        from playwright_stealth import Stealth
+
+        with sync_playwright() as p:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=USER_DATA_DIR_PATH,
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled"],
+                user_agent=DEFAULT_USER_AGENT,
+                viewport=DEFAULT_VIEWPORT,
+                device_scale_factor=DEFAULT_DEVICE_SCALE_FACTOR,
+                is_mobile=DEFAULT_IS_MOBILE,
+                has_touch=DEFAULT_HAS_TOUCH,
+                locale=DEFAULT_LOCALE,
+                timezone_id=DEFAULT_TIMEZONE
+            )
+            Stealth().apply_stealth_sync(context)
+            
+            if len(context.pages) > 0:
+                page = context.pages[0]
+            else:
+                page = context.new_page()
+                
+            page.goto("https://irembo.gov.rw/", wait_until="networkidle")
+            
+            # Wait until the user closes the window or 5 minutes pass
+            try:
+                page.wait_for_event("close", timeout=300000)
+            except Exception:
+                pass # Timeout or already closed
+                
+            context.close()
+    except Exception as e:
+        print(f"[Session Manager] Failed to open: {e}")
+
+@csrf_exempt
+@require_POST
+def manage_session(request):
+    """Spawns a thread to open the persistent Chrome profile for manual session management."""
+    worker_thread = threading.Thread(target=open_session_manager_thread)
+    worker_thread.daemon = True
+    worker_thread.start()
+    return JsonResponse({'status': 'opened'})

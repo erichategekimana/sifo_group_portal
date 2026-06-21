@@ -128,29 +128,20 @@ class UtilsMixin:
             run_in_db_thread(_set)
 
     def run_interactive_login(self):
-        self.log_message("Opening manual login browser window. Please complete authentication there...", level="INFO")
+        self.log_message("Waiting for manual authentication in the current browser window...", level="INFO")
         try:
-            # Create a visible context
-            login_context = self.browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                locale="en-US",
-                timezone_id="Africa/Kigali"
-            )
-            from playwright_stealth import Stealth
-            Stealth().apply_stealth_sync(login_context)
-            login_page = login_context.new_page()
-            login_page.goto("https://irembo.gov.rw/", wait_until="networkidle")
+            self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
             
-            # Monitor until logged in or closed or timeout
+            # Monitor until logged in or timeout
             start_time = time.time()
             login_success = False
             # Wait up to 5 minutes
             while time.time() - start_time < 300:
-                if login_page.is_closed():
+                if self.page.is_closed():
                     break
                 try:
                     # Check if they are logged in or page contains sign out
-                    if login_page.locator('a.dropdown-item:has-text("Sohoka ku rubuga")').is_visible() or "dashboard" in login_page.url.lower():
+                    if self.page.locator('a.dropdown-item:has-text("Sohoka ku rubuga")').is_visible() or "dashboard" in self.page.url.lower():
                         login_success = True
                         break
                 except Exception:
@@ -159,62 +150,18 @@ class UtilsMixin:
             
             if login_success:
                 time.sleep(3)  # let session settle
-                login_context.storage_state(path=self.state_file)
-                self.log_message("Manual login recorded successfully and stored in session file.", level="INFO")
+                self.log_message("Manual login detected. Session is naturally saved to the persistent profile.", level="INFO")
             else:
-                self.log_message("Manual login window closed or timed out before completion.", level="WARNING")
-            
-            login_context.close()
+                self.log_message("Manual login timed out or window closed.", level="WARNING")
         except Exception as e:
             self.log_message(f"Error during manual login flow: {e}", level="ERROR")
 
     def rehydrate_session(self):
-        self.log_message("Rehydrating engine browser with updated session state...", level="INFO")
+        self.log_message("Rehydrating session is no longer needed with persistent profiles. Reloading page...", level="INFO")
         try:
-            if self.page:
-                self.page.close()
-            if self.context:
-                self.context.close()
-
-            from .config import (
-                DEFAULT_USER_AGENT,
-                DEFAULT_VIEWPORT,
-                DEFAULT_DEVICE_SCALE_FACTOR,
-                DEFAULT_IS_MOBILE,
-                DEFAULT_HAS_TOUCH,
-                DEFAULT_LOCALE,
-                DEFAULT_TIMEZONE,
-            )
-            import os
-            from playwright_stealth import Stealth
-
-            context_params = {
-                "user_agent": DEFAULT_USER_AGENT,
-                "viewport": DEFAULT_VIEWPORT,
-                "device_scale_factor": DEFAULT_DEVICE_SCALE_FACTOR,
-                "is_mobile": DEFAULT_IS_MOBILE,
-                "has_touch": DEFAULT_HAS_TOUCH,
-                "locale": DEFAULT_LOCALE,
-                "timezone_id": DEFAULT_TIMEZONE
-            }
-
-            if os.path.exists(self.state_file):
-                context_params["storage_state"] = self.state_file
-
-            self.context = self.browser.new_context(**context_params)
-            Stealth().apply_stealth_sync(self.context)
-
-            self.context.add_init_script("""
-                Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-            """)
-
-            self.page = self.context.new_page()
-            self.context.route("**/*", lambda route: self._intercept_resources(route))
             self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
         except Exception as e:
-            self.log_message(f"Failed to rehydrate session: {e}", level="ERROR")
+            self.log_message(f"Failed to reload session: {e}", level="ERROR")
 
     def close(self):
         if self.context:

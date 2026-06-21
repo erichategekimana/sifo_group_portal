@@ -38,6 +38,9 @@
                 <a href="{% url 'activity_log' %}" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
                     📊 Activity Log
                 </a>
+                <button onclick="openManageSession()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all cursor-pointer">
+                    🔐 Manage Session
+                </button>
                 <a href="{% url 'create_application' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
                     ➕ Create New Application
                 </a>
@@ -662,6 +665,24 @@
                 document.documentElement.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
             }
+        }
+
+        // --- Manage Session Logic ---
+        function openManageSession() {
+            fetch("{% url 'manage_session' %}", { 
+                method: 'POST', 
+                headers: {'X-CSRFToken': '{{ csrf_token }}'} 
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'opened') {
+                    alert("Session manager opened. Please log in or verify your session in the new browser window. The window is securely bound to the automation profile.");
+                }
+            })
+            .catch(err => {
+                console.error("Failed to open session manager:", err);
+                alert("Failed to open session manager. Please ensure the server is running.");
+            });
         }
     </script>
 </body>

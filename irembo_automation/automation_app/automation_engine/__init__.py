@@ -23,11 +23,9 @@ class IremboAutomationEngine(
     ErrorDetectionMixin
 ):
     def __init__(self, booking_record=None):
-        self.state_file = None  # Will be set in browser init? Or we can set here using config
-        # We'll set state_file in __init__ using config.STATE_FILE_PATH
-        # But config is not imported yet; we'll import it.
-        from .config import STATE_FILE_PATH
-        self.state_file = STATE_FILE_PATH
+        self.user_data_dir = None
+        from .config import USER_DATA_DIR_PATH
+        self.user_data_dir = USER_DATA_DIR_PATH
         self.browser = None
         self.context = None
         self.page = None

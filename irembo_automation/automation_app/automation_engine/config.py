@@ -1,7 +1,7 @@
 # automation_app/automation_engine/config.py
 import os
 
-STATE_FILE_PATH = os.path.abspath(os.path.join(os.getcwd(), "state.json"))
+USER_DATA_DIR_PATH = os.path.abspath(os.path.join(os.getcwd(), "chrome_profile"))
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

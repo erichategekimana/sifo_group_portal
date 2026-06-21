@@ -9,6 +9,7 @@ class ErrorDetectionMixin:
         ("Nomero ya Perimi yabuze.", "PERIMI_YABUZE"),
         ("Mwamaze kwiyandikisha ku kizamini.", "YAMAZ_KWIYANDIKISHA"),
         ("Ntidushoboye kubona umwirondoro wanyu muri sisiteme ya NIDA.", "NIDA_NTIBONETSE"),
+        ("Ibisobanuro byatanzwe ntibihuye nibyo twahawe na NIDA", "IBISOBANURO_NTIBIHUYE"),
     ]
 
     def _scan_for_errors(self):
