@@ -177,6 +177,18 @@ def dashboard(request):
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
     
+    # System Statistics
+    now = timezone.now()
+    start_of_week = now - timedelta(days=now.weekday())
+    stats = {
+        'total_apps': ClientApplication.objects.count(),
+        'total_failed': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.FAILED).count(),
+        'total_success': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.SUCCESS).count(),
+        'total_in_progress': ClientApplication.objects.filter(status__in=[ClientApplication.ProcessStatus.PROCESSING, ClientApplication.ProcessStatus.FINALIZING]).count(),
+        'total_completed_week': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.SUCCESS, updated_at__gte=start_of_week).count(),
+        'total_pending': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.PENDING).count(),
+    }
+    
     context = {
         'page_obj': page_obj,
         'applications': page_obj.object_list,
@@ -186,6 +198,7 @@ def dashboard(request):
         'sort_by': sort_by,
         'status_choices': ClientApplication.ProcessStatus.choices,
         'payment_choices': ClientApplication.PaymentStatus.choices,
+        'stats': stats,
     }
     return render(request, 'automation/dashboard.html', context)
 
