@@ -48,20 +48,24 @@ class FinalizationMixin:
         # ── Step 3: Accept the "info is correct" terms checkbox ───────────────
         exact_terms = "Nemeje ko amakuru yose natanze ahangaha ari ukuri kandi ajyanye n'igihe."
         try:
-            terms_box = self.page.locator(
-                f'mat-checkbox:has-text("{exact_terms}") .mat-checkbox-inner-container'
-            )
-            terms_box.wait_for(state="visible", timeout=8000)
-            terms_box.click()
-            time.sleep(0.4)
+            checkbox_input = self.page.locator(
+                f'mat-checkbox:has-text("{exact_terms}") input[type="checkbox"]'
+            ).first
+            checkbox_input.wait_for(state="attached", timeout=8000)
+            
+            is_checked = checkbox_input.evaluate("el => el.checked")
+            if not is_checked:
+                self.page.locator(f'mat-checkbox:has-text("{exact_terms}") label').first.click(timeout=3000)
+            
             self.log_message("Terms checkbox accepted.")
         except Exception as e:
             # Fallback — try any unchecked checkbox near the bottom of the form
             self.log_message(f"Terms checkbox primary locator failed ({e}). Trying fallback...", level="WARNING")
             try:
                 fallback = self.page.locator('mat-checkbox input[type="checkbox"]').last
-                if not fallback.is_checked():
-                    fallback.check()
+                fallback.wait_for(state="attached", timeout=3000)
+                if not fallback.evaluate("el => el.checked"):
+                    self.page.locator('mat-checkbox label').last.click(timeout=3000)
                     time.sleep(0.4)
             except Exception as fe:
                 self.log_message(f"Fallback checkbox also failed: {fe}", level="WARNING")

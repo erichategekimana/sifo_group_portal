@@ -19,11 +19,12 @@ class PollingMixin:
             print("[Warning] Time dropdown not found after retries.")
             return []
 
-        time_dropdown.click()
-        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
+        time_dropdown.click(timeout=3000, force=True)
+            
+        self.page.wait_for_selector(".ng-dropdown-panel", state="attached", timeout=5000)
 
         options = self.page.locator('.ng-dropdown-panel .ng-option')
-        options.first.wait_for(state="visible", timeout=3000)
+        options.first.wait_for(state="attached", timeout=3000)
 
         count = options.count()
         texts = [options.nth(i).inner_text().strip() for i in range(count)]
@@ -45,8 +46,9 @@ class PollingMixin:
             print("[Warning] Time dropdown not found.")
             return False
 
-        time_dropdown.click()
-        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
+        time_dropdown.click(timeout=3000, force=True)
+            
+        self.page.wait_for_selector(".ng-dropdown-panel", state="attached", timeout=5000)
 
         options = self.page.locator('.ng-dropdown-panel .ng-option')
         count = options.count()
@@ -54,7 +56,7 @@ class PollingMixin:
             print(f"[Time] Index {index} out of range (only {count} options).")
             return False
 
-        options.nth(index).click()
+        options.nth(index).click(timeout=2000, force=True)
         time.sleep(1)
         return True
 

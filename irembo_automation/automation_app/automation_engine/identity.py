@@ -76,12 +76,8 @@ class IdentityMixin:
                 is_checked = checkbox_input.evaluate("el => el.checked")
                 if not is_checked:
                     self.log_message("Terms checkbox is unchecked. Performing human-like click on the label...")
-                    try:
-                        # NATIVE STEALTH CLICK: Click the visible label wrapper. This generates an 'isTrusted=true' event.
-                        modal.locator('mat-checkbox label').first.click(timeout=3000)
-                    except Exception as native_err:
-                        self.log_message(f"Native click failed ({native_err}). Using JS fallback...", level="WARNING")
-                        checkbox_input.evaluate("el => el.click()") # Fallback
+                    # NATIVE STEALTH CLICK: Click the visible label wrapper. This generates an 'isTrusted=true' event.
+                    modal.locator('mat-checkbox label').first.click(timeout=3000)
                 else:
                     self.log_message("Terms checkbox already checked. Skipping click.")
             except Exception as e:
