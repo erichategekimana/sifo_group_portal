@@ -40,14 +40,13 @@ class BrowserMixin:
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
         """)
 
-        # Close any tabs restored by --restore-last-session BEFORE creating our fresh tab
-        for old_page in list(self.context.pages):
+        # Create a fresh tab to avoid stale DOM from restored sessions
+        self.page = self.context.new_page()
+        # Close all other restored tabs to clean up the UI
+        for p in self.context.pages[:-1]:
             try:
-                old_page.close()
+                p.close()
             except Exception:
                 pass
-
-        # Now create exactly one clean, fresh tab
-        self.page = self.context.new_page()
-
+            
         self.context.route("**/*", lambda route: self._intercept_resources(route))

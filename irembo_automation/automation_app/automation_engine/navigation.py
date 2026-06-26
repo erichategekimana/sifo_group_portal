@@ -37,14 +37,12 @@ class NavigationMixin:
             else:
                 self.log_message("No response received within 10 seconds. Continuing with current state...")
 
-        self.log_message("Selecting driving registration menu entry layout links...")
-        # Scope the link search strictly inside the Polisi section container.
-        # Using div.service:has(h2) ensures we never match the chatbot or other sections.
-        self.page.locator(
-            'div.service:has(h2:has-text("Polisi")) a:has-text("Kwiyandikisha gukora ikizamini")'
-        ).first.click()
-        self.page.wait_for_selector("mat-dialog-container", timeout=15000)
+        self.page.locator('text="Polisi"').click()
+        time.sleep(1)
 
+        self.log_message("Selecting driving registration menu entry layout links...")
+        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').first.click()
+        self.page.wait_for_selector("mat-dialog-container", timeout=10000)
 
         if self.booking_record and self.booking_record.provisional_number:
             self.log_message("Detected Provisional ID. Configuring Definitive License (BURANDU) application.")
@@ -53,17 +51,11 @@ class NavigationMixin:
             self.log_message("No Provisional ID found. Configuring Category Upgrade (UPGRADE) application.")
             target_service = "Kwiyandikisha gukora ikizamini cy'uruhushya rw'icyiciro kisumbuye"
 
-        self.page.locator("mat-dialog-container ng-select").first.click(timeout=5000, force=True)
-        self.page.wait_for_selector(".ng-dropdown-panel", state="attached", timeout=5000)
-        
-        option = self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').first
-        option.wait_for(state="attached", timeout=5000)
-        option.click(timeout=5000, force=True)
-            
-        time.sleep(1)
+        self.page.locator("mat-dialog-container ng-select").click()
+        self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').click()
+        time.sleep(0.5)
 
-        # Increase timeout heavily to allow Angular to process the selection before clicking Saba
-        self.page.locator('mat-dialog-container button:has-text("Saba")').click(timeout=10000, force=True)
+        self.page.locator('mat-dialog-container button:has-text("Saba")').click()
         self.page.wait_for_load_state("networkidle")
 
         self.handle_identity_verification(national_id, verification_data)

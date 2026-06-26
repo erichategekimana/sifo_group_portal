@@ -50,27 +50,23 @@ class SelectorsMixin:
             dropdown = self.page.locator('ng-select').first
 
         print(f"[Dropdown] Clicking dropdown matching {control_name} to select option: {option_text}")
-        dropdown.click(timeout=3000, force=True)
-            
+        dropdown.click()
         # Wait for the dropdown panel to appear
-        self.page.wait_for_selector(".ng-dropdown-panel", state="attached", timeout=5000)
+        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
 
-        # Now get all options
+        # Now get all options – but wait for the first one to be visible (fixes strict mode)
         options = self.page.locator('.ng-dropdown-panel .ng-option')
-        options.first.wait_for(state="attached", timeout=3000)
+        options.first.wait_for(state="visible", timeout=3000)
 
         matched = False
         count = options.count()
-
-        def _robust_click(opt):
-            opt.click(timeout=2000, force=True)
 
         # Tier 1: Exact match (case-sensitive)
         for i in range(count):
             opt = options.nth(i)
             text = opt.inner_text().strip()
             if text == option_text:
-                _robust_click(opt)
+                opt.click()
                 matched = True
                 break
 
@@ -80,28 +76,28 @@ class SelectorsMixin:
                 opt = options.nth(i)
                 text = opt.inner_text().strip()
                 if text.lower() == option_text.lower():
-                    _robust_click(opt)
+                    opt.click()
                     matched = True
                     break
 
-        # Tier 3: Suffix match (case-insensitive)
+        # Tier 3: Suffix match (case-insensitive) – e.g., "B" from "B(AT)"
         if not matched:
             for i in range(count):
                 opt = options.nth(i)
                 text = opt.inner_text().strip().lower()
                 if text.endswith(option_text.lower()):
-                    _robust_click(opt)
+                    opt.click()
                     matched = True
                     break
 
-        # Tier 4: Word boundary match (case-insensitive)
+        # Tier 4: Word boundary match (case-insensitive) – e.g., "B" inside "B(AT)"
         if not matched:
             for i in range(count):
                 opt = options.nth(i)
                 text = opt.inner_text().strip().lower()
                 pattern = r'\b' + re.escape(option_text.lower()) + r'\b'
                 if re.search(pattern, text):
-                    _robust_click(opt)
+                    opt.click()
                     matched = True
                     break
 
@@ -111,12 +107,12 @@ class SelectorsMixin:
                 opt = options.nth(i)
                 text = opt.inner_text().strip().lower()
                 if option_text.lower() in text:
-                    _robust_click(opt)
+                    opt.click()
                     matched = True
                     break
 
         # Final fallback: click the first option if nothing matched
         if not matched and count > 0:
-            _robust_click(options.first)
+            options.first.click()
 
         time.sleep(1)
