@@ -131,7 +131,8 @@
                     <tr class="border-b border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20">
                         <td colspan="4" class="p-4">
                             <div class="text-xs uppercase font-bold text-slate-400 mb-2">Execution Logs (Attempts)</div>
-                            <pre class="bg-slate-100 dark:bg-slate-950 p-4 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap overflow-x-auto border border-slate-200 dark:border-slate-800">{{ run.log_output }}</pre>
+                            <div class="raw-logs hidden">{{ run.log_output }}</div>
+                            <div class="log-container space-y-2"></div>
                         </td>
                     </tr>
                     {% endif %}
@@ -148,5 +149,67 @@
         </div>
         
     </div>
+
+    <script>
+        function formatLogOutput(rawLogs) {
+            const lines = rawLogs.split('\n');
+            let attemptsHtml = '';
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+
+                const match = line.match(/^\[[^\]]+\]\s+\[([A-Z]+)\]\s+(.*)$/);
+                if (match) {
+                    let msg = match[2];
+
+                    if (msg.startsWith('Attempt') && msg.includes('failed:')) {
+                        attemptsHtml += `
+                            <div class="p-4 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300 font-medium text-sm flex items-start gap-3">
+                                <span class="text-rose-500">❌</span>
+                                <span>${msg}</span>
+                            </div>
+                        `;
+                    } else if (msg.includes('Process completed successfully')) {
+                        attemptsHtml += `
+                            <div class="p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 font-medium text-sm flex items-start gap-3">
+                                <span class="text-emerald-500">✅</span>
+                                <span>${msg}</span>
+                            </div>
+                        `;
+                    } else if (msg.includes('attempts failed. Stopping.')) {
+                        attemptsHtml += `
+                            <div class="p-4 rounded-lg border border-red-300 dark:border-red-800 bg-red-100 dark:bg-red-900/40 text-red-900 dark:text-red-200 font-bold text-sm flex items-start gap-3">
+                                <span class="text-red-600">🛑</span>
+                                <span>${msg}</span>
+                            </div>
+                        `;
+                    } else if (msg.includes('Ntakode zibonetse') || msg.includes('Gracefully aborted')) {
+                        attemptsHtml += `
+                            <div class="p-4 rounded-lg border border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-300 font-medium text-sm flex items-start gap-3">
+                                <span class="text-orange-500">⚠️</span>
+                                <span>${msg}</span>
+                            </div>
+                        `;
+                    }
+                }
+            });
+
+            if (!attemptsHtml) {
+                attemptsHtml = '<div class="text-slate-500 dark:text-slate-400 text-sm text-center py-4 bg-slate-100/50 dark:bg-slate-800/30 rounded-lg">No attempts recorded in this run.</div>';
+            }
+
+            return attemptsHtml;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.log-container').forEach(container => {
+                const rawLogsDiv = container.previousElementSibling;
+                if (rawLogsDiv && rawLogsDiv.classList.contains('raw-logs')) {
+                    const rawLogs = rawLogsDiv.textContent;
+                    container.innerHTML = formatLogOutput(rawLogs);
+                }
+            });
+        });
+    </script>
 </body>
 </html>
