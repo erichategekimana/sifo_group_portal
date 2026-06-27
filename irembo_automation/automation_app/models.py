@@ -153,3 +153,28 @@ class ApplicationRunHistory(models.Model):
 
     def __str__(self):
         return f"Run for {self.application.national_id} at {self.run_date.strftime('%Y-%m-%d %H:%M:%S')} - {self.status}"
+
+class SystemActivityLog(models.Model):
+    """
+    Records a high-level discrete event in the system (creation, edit, delete, bulk action, engine results).
+    """
+    class ActionType(models.TextChoices):
+        CREATE = 'CREATE', 'Application Created'
+        EDIT = 'EDIT', 'Application Updated'
+        DELETE = 'DELETE', 'Application Deleted'
+        BULK = 'BULK', 'Bulk Action'
+        ENGINE = 'ENGINE', 'Automation Engine'
+
+    action_type = models.CharField(max_length=20, choices=ActionType.choices)
+    description = models.TextField()
+    application_name = models.CharField(max_length=255, blank=True, null=True)
+    application_id = models.IntegerField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "System Activity Log"
+        verbose_name_plural = "System Activity Logs"
+
+    def __str__(self):
+        return f"[{self.action_type}] {self.description[:50]}"

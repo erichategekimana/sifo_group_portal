@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.utils import timezone
-from .models import ClientApplication, ApplicationRunHistory
+from .models import ClientApplication, ApplicationRunHistory, SystemActivityLog
 from automation_app.automation_engine import IremboAutomationEngine
 from automation_app.automation_engine.utils import run_in_db_thread, AbortTaskException
 from playwright.sync_api import sync_playwright  # type: ignore[import]
@@ -175,6 +175,12 @@ def run_automation_worker(application_id):
                 failure_reason=app.failure_reason,
                 log_output=app.log_output
             )
+            SystemActivityLog.objects.create(
+                action_type=SystemActivityLog.ActionType.ENGINE,
+                description=f"Automation run completed with status: {app.status}. Billing: {app.billing_number or 'None'}",
+                application_name=f"{app.first_name} {app.last_name}",
+                application_id=app.id
+            )
             print(f"[Worker Thread] Archived run history for application {application_id}")
         except Exception as e:
             print(f"[Worker Thread] Failed to archive run history: {e}")
@@ -260,6 +266,14 @@ def create_application(request):
             )
             app.full_clean()
             app.save()
+            
+            SystemActivityLog.objects.create(
+                action_type=SystemActivityLog.ActionType.CREATE,
+                description=f"Created new application",
+                application_name=f"{app.first_name} {app.last_name}",
+                application_id=app.id
+            )
+            
             messages.success(request, f'Application created successfully for {app.first_name} {app.last_name}')
             return redirect('dashboard')
         except Exception as e:
@@ -294,6 +308,14 @@ def edit_application(request, application_id):
             app.comment = request.POST.get('comment', app.comment)
             app.full_clean()
             app.save()
+            
+            SystemActivityLog.objects.create(
+                action_type=SystemActivityLog.ActionType.EDIT,
+                description=f"Updated application details",
+                application_name=f"{app.first_name} {app.last_name}",
+                application_id=app.id
+            )
+            
             messages.success(request, 'Application updated successfully')
             return redirect('dashboard')
         except Exception as e:
@@ -323,6 +345,14 @@ def delete_application(request, application_id):
     app = get_object_or_404(ClientApplication, id=application_id)
     name = f"{app.first_name} {app.last_name}"
     app.delete()
+    
+    SystemActivityLog.objects.create(
+        action_type=SystemActivityLog.ActionType.DELETE,
+        description=f"Deleted application",
+        application_name=name,
+        application_id=application_id
+    )
+    
     messages.success(request, f'Application deleted: {name}')
     return redirect('dashboard')
 
@@ -346,19 +376,47 @@ def bulk_action(request):
                 worker_thread.daemon = True
                 worker_thread.start()
                 count += 1
+                SystemActivityLog.objects.create(
+                    action_type=SystemActivityLog.ActionType.ENGINE,
+                    description=f"Bulk action: Started automation engine",
+                    application_name=f"{app.first_name} {app.last_name}",
+                    application_id=app.id
+                )
         messages.success(request, f'Started automation for {count} applications')
     
     elif action == 'delete':
         count = apps.count()
+        app_names = list(apps.values_list('first_name', 'last_name'))
         apps.delete()
+        
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Deleted {count} applications",
+            application_name=f"Multiple Applications",
+            application_id=None
+        )
         messages.success(request, f'Deleted {count} applications')
     
     elif action == 'mark_paid':
+        count = apps.count()
         apps.update(payment_status='PAID')
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Marked {count} applications as PAID",
+            application_name=f"Multiple Applications",
+            application_id=None
+        )
         messages.success(request, f'Marked {apps.count()} applications as paid')
     
     elif action == 'mark_unpaid':
+        count = apps.count()
         apps.update(payment_status='UNPAID')
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Marked {count} applications as UNPAID",
+            application_name=f"Multiple Applications",
+            application_id=None
+        )
         messages.success(request, f'Marked {apps.count()} applications as unpaid')
     
     return redirect('dashboard')
@@ -369,6 +427,14 @@ def start_automation(request, application_id):
     
     # Only allow ignition if the process isn't already running or completed
     if application.status in [ClientApplication.ProcessStatus.PENDING, ClientApplication.ProcessStatus.FAILED, ClientApplication.ProcessStatus.CANCELED]:
+        
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.ENGINE,
+            description=f"Manually started automation engine via UI",
+            application_name=f"{application.first_name} {application.last_name}",
+            application_id=application.id
+        )
+        
         worker_thread = threading.Thread(target=run_automation_worker, args=(application.id,))
         worker_thread.daemon = True  # Allows fast, clean server restarts
         worker_thread.start()
@@ -397,10 +463,9 @@ def activity_log(request):
     # Calculate date 3 months ago
     three_months_ago = timezone.now() - timedelta(days=90)
     
-    # Get all applications updated in the last 3 months
-    recent_activities = ClientApplication.objects.filter(
-        updated_at__gte=three_months_ago
-    ).order_by('-updated_at')
+    recent_activities = SystemActivityLog.objects.filter(
+        timestamp__gte=three_months_ago
+    )
     
     # Pagination
     paginator = Paginator(recent_activities, 50)
