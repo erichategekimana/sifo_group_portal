@@ -1,48 +1,17 @@
 # automation_app/automation_engine/navigation.py
 import os
 import time
+import random
 from .utils import AbortTaskException
 
 class NavigationMixin:
     def navigate_to_booking_form(self, national_id, verification_data):
         self.log_message("Navigating to Irembo home page...")
-        self.page.goto("https://irembo.gov.rw/", wait_until="networkidle")
+        self.page.goto("https://irembo.gov.rw/", wait_until="domcontentloaded")
         # Check active session status
         is_valid = self.validate_agent_session(self.page)
         if not is_valid:
-            self.log_message("Active session is expired or missing. Waiting 10 seconds for user action (Continue or Sign In)...", level="WARNING")
-            
-            # Reset user_response field in DB to WAITING to trigger global popup
-            self.set_user_response("WAITING")
-            
-            start_time = time.time()
-            user_action = None
-            while time.time() - start_time < 10:
-                resp = self.get_user_response()
-                if resp in ["continue", "sign_in"]:
-                    user_action = resp
-                    break
-                time.sleep(0.5)
-            
-            # Clear response to hide popup
-            if user_action not in ["continue", "sign_in"]:
-                self.set_user_response(None)
-            
-            if user_action == "continue":
-                self.log_message("User chose to continue anyway. Proceeding with current state...")
-            elif user_action == "sign_in":
-                self.run_interactive_login()
-                self.log_message("Manual login finished. Aborting current task to allow a clean restart.", level="WARNING")
-                raise AbortTaskException("Task aborted after manual sign-in. Please re-run the application.")
-            else:
-                self.log_message("No response received within 10 seconds. Continuing with current state...")
-
-        self.page.locator('text="Polisi"').click()
-        time.sleep(1)
-
-        self.log_message("Selecting driving registration menu entry layout links...")
-        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').first.click()
-        self.page.wait_for_selector("mat-dialog-container", timeout=10000)
+            self.log_message("Active session is expired or missing. Proceeding with current state...", level="WARNING")
 
         if self.booking_record and self.booking_record.provisional_number:
             self.log_message("Detected Provisional ID. Configuring Definitive License (BURANDU) application.")
@@ -51,12 +20,44 @@ class NavigationMixin:
             self.log_message("No Provisional ID found. Configuring Category Upgrade (UPGRADE) application.")
             target_service = "Kwiyandikisha gukora ikizamini cy'uruhushya rw'icyiciro kisumbuye"
 
-        self.page.locator("mat-dialog-container ng-select").click()
-        self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').click()
-        time.sleep(0.5)
+        for attempt in range(3):
+            try:
+                # Wait briefly to ensure Angular event listeners are attached to the 'Polisi' menu
+                time.sleep(1.5)
+                self.page.locator('text="Polisi"').click()
+                time.sleep(1)
 
-        self.page.locator('mat-dialog-container button:has-text("Saba")').click()
-        self.page.wait_for_load_state("networkidle")
+                self.log_message("Selecting driving registration menu entry layout links...")
+                self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').first.click()
+                
+                # Wait for the modal and specifically the ng-select to be visible
+                self.page.wait_for_selector("mat-dialog-container ng-select", state="visible", timeout=15000)
+                
+                # Give Angular a brief moment to attach handlers
+                time.sleep(0.5)
+
+                # Attempt to click the dropdown. Use force=True to prevent click interception overlays from causing timeouts.
+                self.page.locator("mat-dialog-container ng-select").first.click(force=True, timeout=8000)
+                
+                # Ensure the dropdown panel is visible before interacting
+                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                
+                self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').click(timeout=5000)
+                time.sleep(0.5)
+
+                self.page.locator('mat-dialog-container button:has-text("Saba")').click(timeout=5000)
+                # Removed wait_for_load_state("networkidle") to significantly speed up transition to ID entry
+                break  # Successfully completed the service selection
+                
+            except Exception as e:
+                self.log_message(f"Service selection failed on attempt {attempt+1} due to unstable UI: {e}", level="WARNING")
+                if attempt < 2:
+                    self.log_message("Refreshing the page as a fallback to clear modal state and retrying...", level="INFO")
+                    self.page.reload(wait_until="domcontentloaded")
+                    time.sleep(3)
+                else:
+                    self.log_message("Max attempts reached for service selection. Propagating error.", level="ERROR")
+                    raise e
 
         self.handle_identity_verification(national_id, verification_data)
         self.capture_error_if_any()
@@ -117,7 +118,6 @@ class NavigationMixin:
 
         self.log_message("Submitting provisional license details...")
 
-        # Try to click the search/submit button
         search_btn_selectors = [
             'button:has-text("Shakisha")',
             'button.inline-btn',
@@ -125,25 +125,51 @@ class NavigationMixin:
             'form.ng-valid button.btn-primary',
             'button.btn-primary',
         ]
-        clicked = False
-        for btn_selector in search_btn_selectors:
+        
+        for attempt in range(4):
+            clicked = False
+            for btn_selector in search_btn_selectors:
+                try:
+                    btn = self.page.locator(btn_selector).first
+                    if btn.is_visible() and not btn.is_disabled():
+                        self.log_message(f"Clicking search/submit button ({btn_selector}) (Attempt {attempt+1}/4)...")
+                        btn.click()
+                        clicked = True
+                        break
+                except:
+                    continue
+
+            if not clicked:
+                # Fallback: press Enter in the field
+                prov_field.press("Enter")
+
+            time.sleep(random.uniform(1.5, 3.0)) # Human-like delay after click
+            
             try:
-                btn = self.page.locator(btn_selector).first
-                if btn.is_visible() and not btn.is_disabled():
-                    self.log_message(f"Clicking search/submit button ({btn_selector})...")
-                    btn.click()
-                    clicked = True
-                    break
-            except:
-                continue
-
-        if not clicked:
-            # Fallback: press Enter in the field
-            prov_field.press("Enter")
-
-        time.sleep(2)
-        self.capture_error_if_any()
-        self.check_for_errors()
+                # Check for known errors without raising immediately
+                found, reason, raw = self._scan_for_errors()
+                if found:
+                    if attempt < 3:
+                        self.log_message(f"Attempt {attempt+1} encountered error '{reason}'. Retrying search...", level="WARNING")
+                        time.sleep(random.uniform(1.0, 2.0))
+                        continue
+                    else:
+                        self.log_message(f"Max attempts (4) reached. Failing on error '{reason}'.", level="ERROR")
+                        self.capture_error_if_any() # Raise exception and save DB status
+                
+                # Check for generic errors
+                self.check_for_errors()
+                
+                # No errors detected
+                self.log_message("Provisional license successfully verified.")
+                break
+            except Exception as e:
+                if attempt < 3:
+                    self.log_message(f"Attempt {attempt+1} threw exception: {e}. Retrying...", level="WARNING")
+                    time.sleep(random.uniform(1.0, 2.0))
+                    continue
+                else:
+                    raise e
 
     def _save_debug_screenshot(self, label="debug"):
         """Save a full-page screenshot to media/debug/ for post-mortem inspection."""

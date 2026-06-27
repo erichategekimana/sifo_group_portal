@@ -1,5 +1,6 @@
 # automation_app/automation_engine/identity.py
 import time
+import random
 
 class IdentityMixin:
     def handle_identity_verification(self, national_id, client_verification_data):
@@ -77,8 +78,10 @@ class IdentityMixin:
                 if not is_checked:
                     self.log_message("Terms checkbox is unchecked. Performing human-like click on the label...")
                     try:
-                        # NATIVE STEALTH CLICK: Click the visible label wrapper. This generates an 'isTrusted=true' event.
-                        modal.locator('mat-checkbox label').first.click(timeout=3000)
+                        # NATIVE STEALTH CLICK: Click the inner container explicitly. 
+                        # This avoids clicking the label text which contains a hyperlink (target="_blank")
+                        # and prevents the bug where a new tab opens and the checkbox remains unchecked.
+                        modal.locator('.mat-checkbox-inner-container').first.click(timeout=3000)
                     except Exception as native_err:
                         self.log_message(f"Native click failed ({native_err}). Using JS fallback...", level="WARNING")
                         checkbox_input.evaluate("el => el.click()") # Fallback
@@ -123,10 +126,12 @@ class IdentityMixin:
                 self.log_message("Identity verification completed successfully.")
                 break # Success! exit the retry loop
             except Exception:
-                # Intercept NIDA mismatch errors to allow internal retry
+                # Intercept expected errors to allow internal retry
                 found, reason, raw = self._scan_for_errors()
-                if found and reason in ["NIDA_NTIBONETSE", "IBISOBANURO_NTIBIHUYE"] and attempt < 3:
-                    self.log_message(f"Verification attempt {attempt + 1} failed with NIDA error. Retrying with a new challenge...", level="WARNING")
+                retryable_reasons = ["NIDA_NTIBONETSE", "IBISOBANURO_NTIBIHUYE", "YAMAZ_KWIYANDIKISHA", "PERIMI_YABUZE", "ASANZWE_AFITE_URUHUSHYA", "RWATAKAJE_AGACIRO", "UMWIRONDORO_NTUBONETSE"]
+                
+                if found and reason in retryable_reasons and attempt < 3:
+                    self.log_message(f"Verification attempt {attempt + 1} failed with error '{reason}'. Retrying with a new challenge...", level="WARNING")
                     
                     # Close the modal
                     close_btn = modal.locator('i-x#close_btn.dialog-close, .close, [mat-dialog-close]').first
@@ -148,9 +153,16 @@ class IdentityMixin:
                     id_field.fill("")
                     id_field.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
                     id_field.evaluate("el => el.dispatchEvent(new Event('change', { bubbles: true }))")
-                    time.sleep(1)
+                    
+                    # Human-like delay
+                    time.sleep(random.uniform(1.5, 3.5))
                     continue # Start next attempt loop iteration
                 else:
+                    # If max attempts reached and error is known, explicitly record and fail
+                    if found and reason in retryable_reasons and attempt >= 3:
+                        self.log_message(f"Max verification attempts (4) reached for '{reason}'. Recording failure.", level="ERROR")
+                        self.check_for_errors() # Will raise the known error
+                        
                     # If not a retryable error or max attempts reached, handle normally
                     self.check_for_errors()
                     self._pause_on_error(

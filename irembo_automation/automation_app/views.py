@@ -17,23 +17,6 @@ from automation_app.automation_engine.utils import run_in_db_thread, AbortTaskEx
 from playwright.sync_api import sync_playwright  # type: ignore[import]
 
 def run_automation_worker(application_id):
-    def _log_waiting():
-        try:
-            app = ClientApplication.objects.get(id=application_id)
-            if app.status not in [ClientApplication.ProcessStatus.SUCCESS, ClientApplication.ProcessStatus.CANCELED, ClientApplication.ProcessStatus.MANUAL_REVIEW_NEEDED]:
-                app.status = ClientApplication.ProcessStatus.PROCESSING
-                timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
-                log_msg = f"[{timestamp}] [INFO] Queued: Waiting for browser profile to become available...\n"
-                app.log_output = (app.log_output or "") + log_msg
-                app.save(update_fields=["status", "log_output"])
-        except Exception:
-            pass
-    run_in_db_thread(_log_waiting)
-    
-    with browser_lock:
-        _run_automation_worker_locked(application_id)
-
-def _run_automation_worker_locked(application_id):
     max_attempts = 3
 
     # Initialize log_output and ensure starting state
@@ -402,7 +385,7 @@ def open_session_manager_thread(lock):
     try:
         from playwright.sync_api import sync_playwright
         from automation_app.automation_engine.config import (
-            USER_DATA_DIR_PATH, DEFAULT_USER_AGENT, DEFAULT_VIEWPORT,
+            USER_DATA_DIR_PATH, SESSION_STATE_PATH, DEFAULT_USER_AGENT, DEFAULT_VIEWPORT,
             DEFAULT_DEVICE_SCALE_FACTOR, DEFAULT_IS_MOBILE, DEFAULT_HAS_TOUCH,
             DEFAULT_LOCALE, DEFAULT_TIMEZONE
         )
@@ -442,6 +425,13 @@ def open_session_manager_thread(lock):
                 page.wait_for_event("close", timeout=300000)
             except Exception:
                 pass # Timeout or already closed
+                
+            # Extract and save session cookies/localStorage for workers
+            try:
+                context.storage_state(path=SESSION_STATE_PATH)
+                print(f"[Session Manager] Successfully exported session state to {SESSION_STATE_PATH}")
+            except Exception as e:
+                print(f"[Session Manager] Failed to save session state: {e}")
                     
             try:
                 context.close()
@@ -459,7 +449,7 @@ def manage_session(request):
     if not browser_lock.acquire(blocking=False):
         return JsonResponse({
             'status': 'error',
-            'message': 'Browser is currently in use by an active automation worker. Please wait or abort the task.'
+            'message': 'Session Manager is already open. Please complete or close the existing session.'
         }, status=409)
         
     worker_thread = threading.Thread(target=open_session_manager_thread, args=(browser_lock,))

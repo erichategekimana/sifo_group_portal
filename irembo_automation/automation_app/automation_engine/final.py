@@ -2,6 +2,7 @@
 import re
 import time
 import os
+import random
 from .utils import run_in_db_thread   # thread-safe ORM dispatch
 
 
@@ -67,23 +68,45 @@ class FinalizationMixin:
                 self.log_message(f"Fallback checkbox also failed: {fe}", level="WARNING")
 
         # ── Step 4: Submit the application ────────────────────────────────────
-        try:
-            # Use the ID-based selector – it's unique and reliable
-            submit_btn = self.page.locator('#submit_btn')
-            submit_btn.wait_for(state="visible", timeout=10000)
-            # Wait for it to become enabled (not disabled)
-            start = time.time()
-            while time.time() - start < 10:
-                if not submit_btn.is_disabled():
-                    break
-                time.sleep(0.3)
-            else:
-                raise Exception("Submit button remained disabled after 10 seconds.")
-            self.capture_error_if_any()
-            submit_btn.click()
-            self.log_message("Application submitted. Waiting for confirmation page...")
-        except Exception as e:
-            self.log_message(f"Submit button error: {e}", level="ERROR")
+        submit_success = False
+        submit_btn = self.page.locator('#submit_btn')
+        
+        for attempt in range(20):
+            try:
+                submit_btn.wait_for(state="visible", timeout=10000)
+                # Wait for it to become enabled (not disabled)
+                start = time.time()
+                while time.time() - start < 10:
+                    if not submit_btn.is_disabled():
+                        break
+                    time.sleep(0.3)
+                else:
+                    raise Exception("Submit button remained disabled after 10 seconds.")
+                
+                self.log_message(f"Clicking submit button (Attempt {attempt+1}/20)...")
+                submit_btn.click()
+                time.sleep(random.uniform(1.5, 3.0)) # Human-like delay after click
+                
+                # Check for known errors after click without failing immediately
+                found, reason, raw = self._scan_for_errors()
+                if found:
+                    self.log_message(f"Attempt {attempt+1} failed with error '{reason}'. Retrying...", level="WARNING")
+                    time.sleep(random.uniform(1.0, 2.0))
+                    continue
+                
+                # Double check for generic errors
+                self.check_for_errors()
+                
+                self.log_message("Application submitted successfully. Waiting for confirmation page...")
+                submit_success = True
+                break # Success!
+            except Exception as e:
+                self.log_message(f"Attempt {attempt+1} threw exception: {e}. Retrying...", level="WARNING")
+                time.sleep(random.uniform(1.0, 2.0))
+                continue
+                
+        if not submit_success:
+            self.log_message("Submit button failed after 20 attempts.", level="ERROR")
             self.update_database_state("FAILED")
             return None
 

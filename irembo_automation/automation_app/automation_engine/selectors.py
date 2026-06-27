@@ -6,9 +6,12 @@ import time
 class SelectorsMixin:
     def _type_into_field(self, locator, text):
         locator.click()
-        locator.evaluate("el => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }")
-        for char in text:
-            locator.type(char, delay=random.randint(40, 90))
+        # Safely clear the input
+        locator.fill("")
+        time.sleep(0.2)
+        # Type like a human
+        locator.press_sequentially(text, delay=random.randint(40, 90))
+        # Dispatch events to ensure Angular picks up the change
         locator.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
         locator.evaluate("el => el.dispatchEvent(new Event('change', { bubbles: true }))")
         locator.evaluate("el => el.dispatchEvent(new Event('blur', { bubbles: true }))")
@@ -50,9 +53,21 @@ class SelectorsMixin:
             dropdown = self.page.locator('ng-select').first
 
         print(f"[Dropdown] Clicking dropdown matching {control_name} to select option: {option_text}")
-        dropdown.click()
-        # Wait for the dropdown panel to appear
-        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
+        
+        # Robust click loop for the dropdown to ensure panel opens
+        panel_opened = False
+        for attempt in range(3):
+            try:
+                dropdown.click(force=True, timeout=5000)
+                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                panel_opened = True
+                break
+            except Exception as e:
+                print(f"[Dropdown] Attempt {attempt+1} failed to open panel for {control_name}. Retrying...")
+                time.sleep(1.5)
+                
+        if not panel_opened:
+            raise ValueError(f"Failed to open dropdown panel for '{control_name}' after 3 attempts.")
 
         # Now get all options – but wait for the first one to be visible (fixes strict mode)
         options = self.page.locator('.ng-dropdown-panel .ng-option')

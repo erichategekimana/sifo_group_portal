@@ -220,3 +220,5 @@ __marimo__/
 # Irembo Automation Chrome Data
 chrome_profile/
 state.json
+.DS_Store
+automation_logic_and_contents/

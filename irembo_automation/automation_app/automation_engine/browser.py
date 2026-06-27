@@ -15,21 +15,28 @@ from .config import (
 
 class BrowserMixin:
     def initialize_stealth_browser(self, p, headless=True):
-        from .utils import kill_browser_processes
-        kill_browser_processes(self.user_data_dir)
-
-        print(f"[Engine] Launching persistent Chrome profile at: {self.user_data_dir}")
-        self.context = p.chromium.launch_persistent_context(
-            user_data_dir=self.user_data_dir,
+        from .config import SESSION_STATE_PATH
+        
+        print("[Engine] Launching ephemeral Chrome profile for worker...")
+        self.browser = p.chromium.launch(
             headless=headless,
-            args=["--disable-blink-features=AutomationControlled", "--restore-last-session"],
+            args=["--disable-blink-features=AutomationControlled"]
+        )
+        
+        state_kwargs = {}
+        if os.path.exists(SESSION_STATE_PATH):
+            state_kwargs["storage_state"] = SESSION_STATE_PATH
+            print(f"[Engine] Injecting session state from {SESSION_STATE_PATH}")
+            
+        self.context = self.browser.new_context(
             user_agent=DEFAULT_USER_AGENT,
             viewport=DEFAULT_VIEWPORT,
             device_scale_factor=DEFAULT_DEVICE_SCALE_FACTOR,
             is_mobile=DEFAULT_IS_MOBILE,
             has_touch=DEFAULT_HAS_TOUCH,
             locale=DEFAULT_LOCALE,
-            timezone_id=DEFAULT_TIMEZONE
+            timezone_id=DEFAULT_TIMEZONE,
+            **state_kwargs
         )
 
         Stealth().apply_stealth_sync(self.context)

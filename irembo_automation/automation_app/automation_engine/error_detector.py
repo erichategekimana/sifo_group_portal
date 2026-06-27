@@ -10,6 +10,8 @@ class ErrorDetectionMixin:
         ("Mwamaze kwiyandikisha ku kizamini.", "YAMAZ_KWIYANDIKISHA"),
         ("Ntidushoboye kubona umwirondoro wanyu muri sisiteme ya NIDA.", "NIDA_NTIBONETSE"),
         ("Ibisobanuro byatanzwe ntibihuye nibyo twahawe na NIDA", "IBISOBANURO_NTIBIHUYE"),
+        ("Mutwihanginira, umwirondoro wanyu ntushoboye kuboneka nonaha. Mwongere mukanya.", "UMWIRONDORO_NTUBONETSE"),
+        ("Ntabwo wemerewe iyi serivisi.", "NTABWO_WEMEREWE"),
     ]
 
     def _scan_for_errors(self):
@@ -18,20 +20,28 @@ class ErrorDetectionMixin:
         Returns: (found, reason_code, raw_text)
         """
         try:
-            # Get all visible text from alert-danger or text-danger elements
-            error_elements = self.page.locator('.alert-fill-danger, .text-danger, mat-dialog-container small.text-danger')
+            # Get all visible text from common error containers, including the verification modal
+            error_elements = self.page.locator('.alert-fill-danger, .alert-danger, .text-danger, mat-error, app-user-messages, .error-message, mat-dialog-container small.text-danger')
             for elem in error_elements.all():
                 if elem.is_visible():
                     text = elem.inner_text().strip()
+                    text_lower = text.lower()
                     for err_msg, reason in self.ERROR_MESSAGES:
-                        if err_msg in text:
+                        if err_msg.lower() in text_lower:
                             return True, reason, text
             
-            # Also check the whole page body as fallback
-            body_text = self.page.locator('body').inner_text()
+            # Also check the whole page body as fallback, using case-insensitive search
+            body_text = self.page.locator('body').inner_text().lower()
             for err_msg, reason in self.ERROR_MESSAGES:
-                if err_msg in body_text:
+                if err_msg.lower() in body_text:
                     return True, reason, err_msg
+                    
+            # Ultimate fallback: check raw HTML content
+            raw_html = self.page.content().lower()
+            for err_msg, reason in self.ERROR_MESSAGES:
+                if err_msg.lower() in raw_html:
+                    return True, reason, err_msg
+                    
         except Exception as e:
             print(f"[ErrorDetector] Scan failed: {e}")
             

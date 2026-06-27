@@ -19,8 +19,21 @@ class PollingMixin:
             print("[Warning] Time dropdown not found after retries.")
             return []
 
-        time_dropdown.click()
-        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
+        # Robust click loop for the dropdown to ensure panel opens
+        panel_opened = False
+        for attempt in range(3):
+            try:
+                time_dropdown.click(force=True, timeout=5000)
+                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                panel_opened = True
+                break
+            except Exception as e:
+                print(f"[Warning] Attempt {attempt+1} failed to open time dropdown panel. Retrying...")
+                time.sleep(1.5)
+                
+        if not panel_opened:
+            print("[Warning] Failed to open time dropdown panel after 3 attempts.")
+            return []
 
         options = self.page.locator('.ng-dropdown-panel .ng-option')
         options.first.wait_for(state="visible", timeout=3000)
@@ -45,8 +58,21 @@ class PollingMixin:
             print("[Warning] Time dropdown not found.")
             return False
 
-        time_dropdown.click()
-        self.page.wait_for_selector(".ng-dropdown-panel", timeout=5000)
+        # Robust click loop for the dropdown to ensure panel opens
+        panel_opened = False
+        for attempt in range(3):
+            try:
+                time_dropdown.click(force=True, timeout=5000)
+                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                panel_opened = True
+                break
+            except Exception as e:
+                print(f"[Warning] Attempt {attempt+1} failed to open time dropdown panel. Retrying...")
+                time.sleep(1.5)
+                
+        if not panel_opened:
+            print("[Warning] Failed to open time dropdown panel after 3 attempts.")
+            return False
 
         options = self.page.locator('.ng-dropdown-panel .ng-option')
         count = options.count()
@@ -119,6 +145,8 @@ class PollingMixin:
 
         time_index = 0
         consecutive_errors = 0
+        cycle_count = 0
+        target_district = "Kicukiro"
 
         while True:
             try:
@@ -134,11 +162,15 @@ class PollingMixin:
                     # If selection fails, increment and try next
                     time_index += 1
                     if time_index >= len(time_options):
+                        cycle_count += 1
+                        if cycle_count >= 2:
+                            self._pause_on_error(f"Ntakode zibonetse muri {target_district}")
+                            
                         # All times exhausted – toggle district
-                        self.log_message("All time slots exhausted. Toggling district to refresh...")
+                        self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh...")
                         self.set_angular_dropdown(district_control, "Gasabo")
                         time.sleep(random.uniform(1.2, 2.5))
-                        self.set_angular_dropdown(district_control, "Kicukiro")
+                        self.set_angular_dropdown(district_control, target_district)
                         time.sleep(random.uniform(1.2, 2.5))
                         time_options = self._get_time_options()
                         if not time_options:
@@ -171,11 +203,15 @@ class PollingMixin:
                 # No slot found – move to next time
                 time_index += 1
                 if time_index >= len(time_options):
+                    cycle_count += 1
+                    if cycle_count >= 2:
+                        self._pause_on_error(f"Ntakode zibonetse muri {target_district}")
+                        
                     # All times exhausted – toggle district to refresh
-                    self.log_message("All time slots exhausted. Toggling district to refresh...")
+                    self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh...")
                     self.set_angular_dropdown(district_control, "Gasabo")
                     time.sleep(random.uniform(1.2, 2.5))
-                    self.set_angular_dropdown(district_control, "Kicukiro")
+                    self.set_angular_dropdown(district_control, target_district)
                     time.sleep(random.uniform(1.2, 2.5))
                     time_options = self._get_time_options()
                     if not time_options:
