@@ -18,6 +18,7 @@ slot_checker_state = {
     "status": "Stopped",
     "last_check": None,
     "slots_found": False,
+    "slots_found_time": None,
     "found_details": "",
     "check_count": 0,
     "current_app_name": None,
@@ -36,6 +37,7 @@ def start_slot_checker():
         slot_checker_state["is_running"] = True
         slot_checker_state["status"] = "Starting Category A slot checker..."
         slot_checker_state["slots_found"] = False
+        slot_checker_state["slots_found_time"] = None
         slot_checker_state["found_details"] = ""
         
         _checker_thread = threading.Thread(target=_slot_checker_loop, daemon=True, name="CatASlotChecker")
@@ -60,6 +62,7 @@ def get_slot_checker_status():
 def acknowledge_slot_alert():
     with _checker_lock:
         slot_checker_state["slots_found"] = False
+        slot_checker_state["slots_found_time"] = None
         slot_checker_state["found_details"] = ""
         if slot_checker_state["is_running"]:
             slot_checker_state["status"] = "Alert acknowledged. Resuming slot checks soon..."
@@ -91,6 +94,61 @@ def _check_slots_on_page(engine):
             pass
     return False, ""
 
+def _auto_launch_cat_a_batch():
+    from .models import ClientApplication, SystemActivityLog
+    from .views import run_automation_worker
+
+    print("[Cat A Auto-Launcher] Starting automatic batch execution for Category A applications...")
+    
+    def _fetch_eligible():
+        return list(ClientApplication.objects.filter(
+            category__iexact='A',
+            status__in=['PENDING', 'FAILED', 'CANCELED']
+        ))
+
+    apps = run_in_db_thread(_fetch_eligible)
+    
+    if not apps:
+        print("[Cat A Auto-Launcher] No eligible Category A applications found.")
+        slot_checker_state["status"] = "Auto-launch complete: No eligible Category A applications found in DB."
+        return
+
+    total = len(apps)
+    print(f"[Cat A Auto-Launcher] Found {total} eligible Category A application(s). Launching in batches of 15 every 10 seconds...")
+    slot_checker_state["status"] = f"Auto-launching Category A automation: 0/{total} applications started..."
+
+    batch_size = 15
+    launched_count = 0
+
+    for i in range(0, total, batch_size):
+        batch = apps[i:i + batch_size]
+        for app in batch:
+            try:
+                worker_thread = threading.Thread(target=run_automation_worker, args=(app.id,), daemon=True)
+                worker_thread.start()
+                launched_count += 1
+                
+                def _log_activity(app_id, app_name):
+                    SystemActivityLog.objects.create(
+                        action_type=SystemActivityLog.ActionType.ENGINE,
+                        description="Auto-launched by Category A Slot Checker (30s timeout)",
+                        application_name=app_name,
+                        application_id=app_id
+                    )
+                run_in_db_thread(_log_activity, app.id, f"{app.first_name} {app.last_name}")
+            except Exception as e:
+                print(f"[Cat A Auto-Launcher Error] Failed to launch worker for app {app.id}: {e}")
+
+        slot_checker_state["status"] = f"Auto-launching Category A automation: {launched_count}/{total} applications started..."
+        print(f"[Cat A Auto-Launcher] Launched batch of {len(batch)} applications ({launched_count}/{total} total).")
+
+        if i + batch_size < total:
+            print("[Cat A Auto-Launcher] Pausing 10 seconds before next batch...")
+            time.sleep(10)
+
+    slot_checker_state["status"] = f"Auto-launch complete! Successfully launched {launched_count} Category A applications."
+    print(f"[Cat A Auto-Launcher] Completed launching {launched_count} applications.")
+
 def _slot_checker_loop():
     from .models import ClientApplication
     from .automation_engine import IremboAutomationEngine
@@ -98,15 +156,27 @@ def _slot_checker_loop():
     print("[Cat A Slot Checker] Background monitoring loop started.")
     
     while slot_checker_state["is_running"]:
-        # If slots are already found and alarm is ringing, pause checking until user acknowledges
+        # If slots are already found and alarm is ringing, check 30s timeout
         if slot_checker_state["slots_found"]:
-            slot_checker_state["status"] = "🚨 SLOTS FOUND! Alarm ringing... Waiting for user acknowledgment."
+            elapsed = time.time() - slot_checker_state.get("slots_found_time", time.time())
+            remaining = max(0, 30 - int(elapsed))
+            slot_checker_state["status"] = f"SLOTS FOUND! Alarm ringing... Auto-launching Category A automation in {remaining}s if unacknowledged!"
+            
             if HAVE_WINSOUND:
                 try:
                     winsound.Beep(900, 400)
                 except Exception:
                     pass
-            time.sleep(2)
+            
+            if elapsed >= 30:
+                print("[Cat A Slot Checker] 30 seconds elapsed without user acknowledgment! Starting automatic bulk launcher...")
+                slot_checker_state["slots_found"] = False
+                slot_checker_state["is_running"] = False
+                slot_checker_state["status"] = "30s timeout reached! Starting automatic Category A batch automation (15 apps every 10s)..."
+                threading.Thread(target=_auto_launch_cat_a_batch, daemon=True, name="CatAAutoLauncher").start()
+                break
+            
+            time.sleep(1)
             continue
 
         # Step 1: Query DB for valid Category A applications with provisional numbers
@@ -205,10 +275,11 @@ def _slot_checker_loop():
                 slot_checker_state["last_check"] = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if found_any_slots:
-                    print(f"[Cat A Slot Checker] 🚨 SLOTS FOUND! Details: {found_details_str}")
+                    print(f"[Cat A Slot Checker] SLOTS FOUND! Details: {found_details_str}")
                     slot_checker_state["slots_found"] = True
+                    slot_checker_state["slots_found_time"] = time.time()
                     slot_checker_state["found_details"] = f"Category A slots available: {found_details_str}! (Detected via {app.first_name} {app.last_name})"
-                    slot_checker_state["status"] = "🚨 SLOTS DETECTED! Sounding alarm..."
+                    slot_checker_state["status"] = "SLOTS DETECTED! Sounding alarm... Auto-launching Category A automation in 30s if unacknowledged!"
                     
                     if HAVE_WINSOUND:
                         for _ in range(5):
@@ -244,4 +315,6 @@ def _slot_checker_loop():
                 time.sleep(1)
 
     print("[Cat A Slot Checker] Background monitoring loop stopped cleanly.")
-    slot_checker_state["status"] = "Stopped by user."
+    if not slot_checker_state["status"].startswith("30s timeout reached") and not slot_checker_state["status"].startswith("Auto-launch"):
+        slot_checker_state["status"] = "Stopped by user."
+
