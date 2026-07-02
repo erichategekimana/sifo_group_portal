@@ -14,4 +14,8 @@ urlpatterns = [
     path('api/logs/<int:application_id>/', views.api_application_logs, name='api_application_logs'),
     path('api/respond/<int:application_id>/', views.api_respond_session, name='api_respond_session'),
     path('manage-session/', views.manage_session, name='manage_session'),
+    path('api/slot-checker/start/', views.api_start_slot_checker, name='api_start_slot_checker'),
+    path('api/slot-checker/stop/', views.api_stop_slot_checker, name='api_stop_slot_checker'),
+    path('api/slot-checker/status/', views.api_status_slot_checker, name='api_status_slot_checker'),
+    path('api/slot-checker/ack/', views.api_ack_slot_alert, name='api_ack_slot_alert'),
 ]
