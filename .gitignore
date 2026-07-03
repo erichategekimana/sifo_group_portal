@@ -223,3 +223,4 @@ state.json
 .DS_Store
 automation_logic_and_contents/
 windows_startup_files/
+session_state.json

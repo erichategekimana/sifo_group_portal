@@ -569,3 +569,32 @@ def manage_session(request):
     worker_thread.daemon = True
     worker_thread.start()
     return JsonResponse({'status': 'opened'})
+
+# ---------------------------------------------------------------------------
+# Category A Background Slot Checker Endpoints
+# ---------------------------------------------------------------------------
+@csrf_exempt
+@require_POST
+def api_start_slot_checker(request):
+    from .slot_checker import start_slot_checker
+    success, msg = start_slot_checker()
+    return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
+
+@csrf_exempt
+@require_POST
+def api_stop_slot_checker(request):
+    from .slot_checker import stop_slot_checker
+    success, msg = stop_slot_checker()
+    return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
+
+def api_status_slot_checker(request):
+    from .slot_checker import get_slot_checker_status
+    status_data = get_slot_checker_status()
+    return JsonResponse(status_data)
+
+@csrf_exempt
+@require_POST
+def api_ack_slot_alert(request):
+    from .slot_checker import acknowledge_slot_alert
+    success, msg = acknowledge_slot_alert()
+    return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
