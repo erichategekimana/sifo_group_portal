@@ -18,4 +18,6 @@ urlpatterns = [
     path('api/slot-checker/stop/', views.api_stop_slot_checker, name='api_stop_slot_checker'),
     path('api/slot-checker/status/', views.api_status_slot_checker, name='api_status_slot_checker'),
     path('api/slot-checker/ack/', views.api_ack_slot_alert, name='api_ack_slot_alert'),
+    path('export/', views.export_applications, name='export_applications'),
 ]
+

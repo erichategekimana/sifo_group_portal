@@ -134,9 +134,17 @@
                     
                     <!-- Search Button -->
                     <div class="pt-2">
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded transition-all text-sm shadow-lg">
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded transition-all text-sm shadow-lg cursor-pointer">
                             🔍 Apply Filters
                         </button>
+                    </div>
+
+                    <!-- Export Button -->
+                    <div class="pt-2">
+                        <a href="{% url 'export_applications' %}?q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" 
+                           class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded transition-all text-sm shadow-lg inline-flex items-center justify-center gap-1.5 cursor-pointer">
+                            📥 Export Excel (Filtered)
+                        </a>
                     </div>
                 </form>
             </div>

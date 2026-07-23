@@ -598,3 +598,117 @@ def api_ack_slot_alert(request):
     from .slot_checker import acknowledge_slot_alert
     success, msg = acknowledge_slot_alert()
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
+
+
+def export_applications(request):
+    """Generates a Microsoft Excel (.xlsx) document for the filtered applications."""
+    import io
+    import openpyxl
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from django.db.models import Q
+    from .models import ClientApplication
+
+    query = request.GET.get('q', '')
+    status_filter = request.GET.get('status', '')
+    payment_filter = request.GET.get('payment', '')
+    sort_by = request.GET.get('sort', '-created_at')
+
+    # Filter queryset exactly as in dashboard
+    applications = ClientApplication.objects.all()
+    if query:
+        applications = applications.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(national_id__icontains=query) |
+            Q(phone_number__icontains=query) |
+            Q(email__icontains=query) |
+            Q(billing_number__icontains=query)
+        )
+    if status_filter:
+        applications = applications.filter(status=status_filter)
+    if payment_filter:
+        applications = applications.filter(payment_status=payment_filter)
+
+    applications = applications.order_by(sort_by)
+
+    # Determine status/payment label for the title & filename
+    title_parts = []
+    if status_filter:
+        title_parts.append(status_filter.lower())
+    if payment_filter:
+        title_parts.append(payment_filter.lower())
+
+    if not title_parts:
+        title_name = "all status"
+    else:
+        title_name = "_".join(title_parts)
+
+    now = timezone.now()
+    timestamp_suffix = now.strftime("%Y%m%d_%H%M%S")
+    timestamp_display = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Create Excel Workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Applications"
+
+    # Row 1: Title with timestamp (e.g. "Unpaid - 2026-07-23 09:23:35")
+    title_text = f"{title_name.replace('_', ' ').capitalize()} - {timestamp_display}"
+    ws.append([title_text])
+    ws.merge_cells('A1:B1')
+
+    # Row 2: One free/empty row between title and contents
+    ws.append([])
+
+    # Row 3: Headers (Name, Number) capitalized and bold
+    ws.append(["Name", "Number"])
+
+    # Row 4+: Data (Name, Number)
+    for app in applications:
+        full_name = f"{app.first_name} {app.last_name}"
+        ws.append([full_name, app.phone_number])
+
+    # Styling and Layout adjustments
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    # Style Row 1 (Title): size 20pt, bold, centered
+    ws['A1'].font = Font(size=20, bold=True)
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 35
+
+    # Style Row 3 (Headers): bold, vertical alignment
+    header_font = Font(bold=True)
+    ws['A3'].font = header_font
+    ws['B3'].font = header_font
+    ws['A3'].alignment = Alignment(vertical='center')
+    ws['B3'].alignment = Alignment(vertical='center')
+    ws.row_dimensions[3].height = 20
+
+    # Auto-adjust column widths based on cell content (excluding title row)
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            # Skip title row (row 1) to avoid merged cell width distortion
+            if cell.row == 1:
+                continue
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+    # Save workbook to memory
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    # Return Excel response
+    filename = f"{title_name}_{timestamp_suffix}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
