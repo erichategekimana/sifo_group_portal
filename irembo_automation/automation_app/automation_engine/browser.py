@@ -56,4 +56,15 @@ class BrowserMixin:
             except Exception:
                 pass
             
+        # Create exactly one clean, fresh tab FIRST to keep the context alive
+        self.page = self.context.new_page()
+
+        # Now close any tabs restored by --restore-last-session
+        for old_page in list(self.context.pages):
+            if old_page != self.page:
+                try:
+                    old_page.close()
+                except Exception:
+                    pass
+
         self.context.route("**/*", lambda route: self._intercept_resources(route))

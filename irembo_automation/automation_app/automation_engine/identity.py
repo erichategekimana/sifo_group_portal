@@ -67,8 +67,10 @@ class IdentityMixin:
 
             time.sleep(0.5)
 
-            # --- Checkbox handling (improved for Stealth) ---
+            # --- Checkbox handling (improved) ---
             self.log_message("Verifying terms checkbox state...")
+            # Scope checkbox inside the modal as well (optional, but safer)
+            checkbox_input = modal.locator('mat-checkbox:has-text("Nemeye") input[type="checkbox"]')
             try:
                 # Find the hidden checkbox to check its state
                 checkbox_input = modal.locator('mat-checkbox input[type="checkbox"]').first
@@ -85,12 +87,16 @@ class IdentityMixin:
                     except Exception as native_err:
                         self.log_message(f"Native click failed ({native_err}). Using JS fallback...", level="WARNING")
                         checkbox_input.evaluate("el => el.click()") # Fallback
+                checkbox_input.wait_for(state="visible", timeout=5000)
+                if not checkbox_input.is_checked():
+                    self.log_message("Terms checkbox is unchecked. Clicking to accept...")
+                    checkbox_input.check()
                 else:
                     self.log_message("Terms checkbox already checked. Skipping click.")
             except Exception as e:
-                self.log_message(f"Warning: Checkbox validation failed entirely: {e}", level="WARNING")
-            
-            time.sleep(0.5)
+                self.log_message(f"Warning: Could not interact with checkbox ({e}). Attempting fallback click on container...", level="WARNING")
+                container = modal.locator('mat-checkbox:has-text("Nemeye") .mat-checkbox-inner-container')
+                container.click(force=True)
 
             # --- Genzura button ---
             self.log_message("Locating 'Genzura' confirmation button...")

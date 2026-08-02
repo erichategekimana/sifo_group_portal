@@ -66,10 +66,79 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-300 mb-2">Provisional Number</label>
-                            <input type="text" name="provisional_number" value="{{ app.provisional_number }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                            <input type="text" name="provisional_number" value="{{ app.provisional_number|default:'' }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
                         </div>
                     </div>
                 </div>
+
+                <!-- Location & Examination Details Section -->
+                <div class="border-b border-slate-700 pb-6">
+                    <h2 class="text-lg font-bold text-emerald-400 mb-4">Location & Examination Details</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Akarere (District)</label>
+                            <select name="district" id="districtSelect" onchange="toggleSiteField()" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                {% for d in districts %}
+                                    <option value="{{ d }}" {% if app.district == d %}selected{% endif %}>{{ d }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Itariki (Exam Date)</label>
+                            <input type="date" name="exam_date" value="{{ app.exam_date|date:'Y-m-d' }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Igihe (Exam Time)</label>
+                            <select name="exam_time" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                <option value="" {% if not app.exam_time %}selected{% endif %}>Select Time Slot (Optional)</option>
+                                <option value="8:00 AM - 9:30 AM" {% if app.exam_time == '8:00 AM - 9:30 AM' %}selected{% endif %}>8:00 AM - 9:30 AM</option>
+                                <option value="9:30 AM - 11:00 AM" {% if app.exam_time == '9:30 AM - 11:00 AM' %}selected{% endif %}>9:30 AM - 11:00 AM</option>
+                                <option value="11:00 AM - 12:30 PM" {% if app.exam_time == '11:00 AM - 12:30 PM' %}selected{% endif %}>11:00 AM - 12:30 PM</option>
+                                <option value="2:00 PM - 3:30 PM" {% if app.exam_time == '2:00 PM - 3:30 PM' %}selected{% endif %}>2:00 PM - 3:30 PM</option>
+                                <option value="3:30 PM - 5:00 PM" {% if app.exam_time == '3:30 PM - 5:00 PM' %}selected{% endif %}>3:30 PM - 5:00 PM</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">
+                                Aho ikizamini kizabera (Working Site)
+                                <span id="siteBadge" class="text-xs text-amber-400 font-normal ml-1">(Kicukiro site selection)</span>
+                            </label>
+                            <input type="text" name="working_site" id="workingSiteInput" value="{{ app.working_site|default:'' }}" placeholder="e.g. Busanza Automated Center" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-slate-300 mb-2">From Teacher</label>
+                            <select name="teacher" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                <option value="none" {% if not app.teacher %}selected{% endif %}>None (No Teacher)</option>
+                                {% for t in teachers %}
+                                    <option value="{{ t.id }}" {% if app.teacher_id == t.id %}selected{% endif %}>{{ t.name }} {% if t.phone_number %}({{ t.phone_number }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    function toggleSiteField() {
+                        const dist = document.getElementById('districtSelect').value;
+                        const siteInput = document.getElementById('workingSiteInput');
+                        const siteBadge = document.getElementById('siteBadge');
+                        if (dist === 'Kicukiro') {
+                            siteInput.disabled = false;
+                            siteInput.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-800');
+                            siteInput.classList.add('bg-slate-700');
+                            siteInput.placeholder = "e.g. Busanza Automated Center";
+                            siteBadge.style.display = "inline";
+                        } else {
+                            siteInput.disabled = true;
+                            siteInput.value = "";
+                            siteInput.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-800');
+                            siteInput.classList.remove('bg-slate-700');
+                            siteInput.placeholder = "Disabled (Only available for Kicukiro)";
+                            siteBadge.style.display = "none";
+                        }
+                    }
+                    document.addEventListener('DOMContentLoaded', toggleSiteField);
+                </script>
 
                 <!-- Process Status Section -->
                 <div class="border-b border-slate-700 pb-6">

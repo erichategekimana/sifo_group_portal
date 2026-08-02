@@ -19,5 +19,10 @@ urlpatterns = [
     path('api/slot-checker/status/', views.api_status_slot_checker, name='api_status_slot_checker'),
     path('api/slot-checker/ack/', views.api_ack_slot_alert, name='api_ack_slot_alert'),
     path('export/', views.export_applications, name='export_applications'),
+    path('teachers/', views.manage_teachers, name='manage_teachers'),
+    path('teachers/delete/<int:teacher_id>/', views.delete_teacher, name='delete_teacher'),
+    path('archived/', views.archived_dashboard, name='archived_dashboard'),
+    path('archive/<int:application_id>/', views.archive_application, name='archive_application'),
+    path('unarchive/<int:application_id>/', views.unarchive_application, name='unarchive_application'),
 ]
 

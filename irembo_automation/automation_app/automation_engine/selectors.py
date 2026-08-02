@@ -40,97 +40,138 @@ class SelectorsMixin:
             except Exception:
                 pass
 
+    def _get_ng_select_selected_value(self, control_name):
+        """
+        Safely extract the currently selected option text from an Angular ng-select dropdown.
+        """
+        try:
+            dropdown = self.page.locator(f'ng-select[formcontrolname="{control_name}"]')
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select[formcontrolname*="{control_name}" i]').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select:has-text("{control_name}")').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator('ng-select').first
+
+            if dropdown.is_visible():
+                label_loc = dropdown.locator('.ng-value-label, .ng-value').first
+                if label_loc.is_visible():
+                    return label_loc.inner_text().strip()
+        except Exception as e:
+            print(f"[Dropdown Verification Exception] {e}")
+        return None
+
     def set_angular_dropdown(self, control_name, option_text):
-        # Find the dropdown by formcontrolname, with fallbacks
-        dropdown = self.page.locator(f'ng-select[formcontrolname="{control_name}"]')
-        if not dropdown.is_visible():
-            dropdown = self.page.locator(f'ng-select[formcontrolname*="{control_name}" i]').first
+        for attempt in range(1, 4):
+            # Find the dropdown by formcontrolname, with fallbacks
+            dropdown = self.page.locator(f'ng-select[formcontrolname="{control_name}"]')
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select[formcontrolname*="{control_name}" i]').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select:has-text("{control_name}")').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator('ng-select').first
 
-        if not dropdown.is_visible():
-            dropdown = self.page.locator(f'ng-select:has-text("{control_name}")').first
+            if not dropdown.is_visible():
+                print(f"[Dropdown Warning] Dropdown {control_name} not visible on attempt {attempt}")
+                time.sleep(1.0)
+                continue
 
-        if not dropdown.is_visible():
-            dropdown = self.page.locator('ng-select').first
+            print(f"[Dropdown] Clicking dropdown matching {control_name} to select option: {option_text} (Attempt {attempt}/3)")
+            
+            # Robust click loop for the dropdown to ensure panel opens
+            panel_opened = False
+            for click_attempt in range(3):
+                try:
+                    dropdown.click(force=True, timeout=5000)
+                    self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                    panel_opened = True
+                    break
+                except Exception as e:
+                    print(f"[Dropdown] Attempt {click_attempt+1} failed to open panel for {control_name}. Retrying...")
+                    time.sleep(1.5)
+                    
+            if not panel_opened:
+                continue
 
-        print(f"[Dropdown] Clicking dropdown matching {control_name} to select option: {option_text}")
-        
-        # Robust click loop for the dropdown to ensure panel opens
-        panel_opened = False
-        for attempt in range(3):
-            try:
-                dropdown.click(force=True, timeout=5000)
-                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
-                panel_opened = True
-                break
-            except Exception as e:
-                print(f"[Dropdown] Attempt {attempt+1} failed to open panel for {control_name}. Retrying...")
-                time.sleep(1.5)
-                
-        if not panel_opened:
-            raise ValueError(f"Failed to open dropdown panel for '{control_name}' after 3 attempts.")
+            options = self.page.locator('.ng-dropdown-panel .ng-option')
+            options.first.wait_for(state="visible", timeout=3000)
 
-        # Now get all options – but wait for the first one to be visible (fixes strict mode)
-        options = self.page.locator('.ng-dropdown-panel .ng-option')
-        options.first.wait_for(state="visible", timeout=3000)
+            matched = False
+            count = options.count()
 
-        matched = False
-        count = options.count()
-
-        # Tier 1: Exact match (case-sensitive)
-        for i in range(count):
-            opt = options.nth(i)
-            text = opt.inner_text().strip()
-            if text == option_text:
-                opt.click()
-                matched = True
-                break
-
-        # Tier 2: Exact match (case-insensitive)
-        if not matched:
+            # Tier 1: Exact match (case-sensitive)
             for i in range(count):
                 opt = options.nth(i)
                 text = opt.inner_text().strip()
-                if text.lower() == option_text.lower():
+                if text == option_text:
                     opt.click()
                     matched = True
                     break
 
-        # Tier 3: Suffix match (case-insensitive) – e.g., "B" from "B(AT)"
-        if not matched:
-            for i in range(count):
-                opt = options.nth(i)
-                text = opt.inner_text().strip().lower()
-                if text.endswith(option_text.lower()):
-                    opt.click()
-                    matched = True
-                    break
+            # Tier 2: Exact match (case-insensitive)
+            if not matched:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text = opt.inner_text().strip()
+                    if text.lower() == option_text.lower():
+                        opt.click()
+                        matched = True
+                        break
 
-        # Tier 4: Word boundary match (case-insensitive) – e.g., "B" inside "B(AT)"
-        if not matched:
-            for i in range(count):
-                opt = options.nth(i)
-                text = opt.inner_text().strip().lower()
-                pattern = r'\b' + re.escape(option_text.lower()) + r'\b'
-                if re.search(pattern, text):
-                    opt.click()
-                    matched = True
-                    break
+            # Tier 3: Suffix match (case-insensitive) – e.g., "B" from "B(AT)"
+            if not matched:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text = opt.inner_text().strip().lower()
+                    if text.endswith(option_text.lower()):
+                        opt.click()
+                        matched = True
+                        break
 
-        # Tier 5: Substring match (case-insensitive fallback)
-        if not matched:
-            for i in range(count):
-                opt = options.nth(i)
-                text = opt.inner_text().strip().lower()
-                if option_text.lower() in text:
-                    opt.click()
-                    matched = True
-                    break
+            # Tier 4: Word boundary match (case-insensitive) – e.g., "B" inside "B(AT)"
+            if not matched:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text = opt.inner_text().strip().lower()
+                    pattern = r'\b' + re.escape(option_text.lower()) + r'\b'
+                    if re.search(pattern, text):
+                        opt.click()
+                        matched = True
+                        break
 
-        # Final fallback: click the first option if nothing matched
-        if not matched and count > 0:
-            options.first.click()
+            # Tier 5: Substring match (case-insensitive fallback)
+            if not matched:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text = opt.inner_text().strip().lower()
+                    if option_text.lower() in text:
+                        opt.click()
+                        matched = True
+                        break
 
-        time.sleep(1)
+            # Final fallback: click the first option if nothing matched
+            if not matched and count > 0:
+                print(f"[Dropdown Warning] No match found for '{option_text}' in dropdown '{control_name}'. Clicking first option.")
+                options.first.click()
+                matched = True
+
+            time.sleep(1.0)
+
+            # Verification step
+            selected_val = self._get_ng_select_selected_value(control_name)
+            print(f"[Dropdown] Verified selected value for '{control_name}': '{selected_val}' (Target: '{option_text}')")
+            if selected_val and option_text.lower() in selected_val.lower():
+                return
+            else:
+                print(f"[Dropdown Warning] Verification failed for '{control_name}'. Expected '{option_text}', got '{selected_val}'. Retrying...")
+                try:
+                    self.page.keyboard.press("Escape")
+                except:
+                    pass
+                time.sleep(1.0)
+                
+        raise ValueError(f"Failed to set angular dropdown '{control_name}' to option '{option_text}' after retries.")
 
     def select_category_dropdown(self, control_name, target_category):
         target_upper = target_category.strip().upper()
@@ -271,10 +312,23 @@ class SelectorsMixin:
                 matched_text = matched_option.inner_text().strip()
                 print(f"[Category Selection] Matched option '{matched_text}' on attempt {attempt}. Clicking...")
                 matched_option.click()
-                time.sleep(1)
-                return True
+                time.sleep(1.0)
+                
+                # Verify that the value actually changed/updated
+                selected_val = self._get_ng_select_selected_value(control_name)
+                print(f"[Category Selection] Verified selected value on page: '{selected_val}'")
+                if selected_val:
+                    selected_val_upper = selected_val.upper()
+                    sel_is_at = "AT" in selected_val_upper or "AUTOMATIQUE" in selected_val_upper
+                    
+                    if clean_target_code in selected_val_upper and sel_is_at == target_is_at:
+                        return True
+                    else:
+                        print(f"[Category Selection Warning] Selection verification failed. Selected: '{selected_val}', Expected: '{target_category}'")
+                else:
+                    print(f"[Category Selection Warning] Selected value is empty or not found.")
 
-            print(f"[Category Selection] Attempt {attempt}: Category '{target_category}' not found in current options: {current_texts}. Retrying as fallback...")
+            print(f"[Category Selection] Attempt {attempt}: Category '{target_category}' not found or verification failed in current options: {current_texts}. Retrying as fallback...")
             # Close dropdown panel by pressing Escape or clicking body to reset before next attempt
             try:
                 self.page.keyboard.press("Escape")

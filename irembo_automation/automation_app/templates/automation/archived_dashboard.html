@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>Archived Applications Box - Sifo Group Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+        @custom-variant dark (&:where(.dark, .dark *));
+    </style>
+    <script>
+        if (localStorage.getItem('theme') === 'light' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: light)').matches)) {
+            document.documentElement.classList.remove('dark');
+        } else {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans min-h-screen p-4 md:p-6">
+
+    <header class="w-full mb-8">
+        <div class="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-4 mb-6">
+            <div>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-4xl font-bold tracking-tight text-purple-600 dark:text-purple-400">📦 Archived Applications Box</h1>
+                    <span class="px-3 py-1 bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300 font-extrabold text-xs rounded-full border border-purple-300 dark:border-purple-700">
+                        {{ archived_count }} Archived Records
+                    </span>
+                </div>
+                <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Repository of inactive and archived applications stored out of active view</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="theme-toggle" class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full bg-slate-300 dark:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 shadow-inner" onclick="toggleTheme()" aria-label="Toggle Dark Mode">
+                    <span class="sr-only">Toggle theme</span>
+                    <span class="pointer-events-none absolute left-1 flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow ring-0 transition-transform duration-300 ease-in-out transform translate-x-0 dark:translate-x-6">
+                        <span class="dark:hidden text-amber-500 text-xs leading-none">☀️</span>
+                        <span class="hidden dark:block text-indigo-400 text-xs leading-none">🌙</span>
+                    </span>
+                </button>
+                <a href="{% url 'dashboard' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    🏠 Active Dashboard ({{ active_count }})
+                </a>
+                <a href="{% url 'activity_log' %}" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    📊 Activity Log
+                </a>
+                <a href="{% url 'manage_teachers' %}" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    🎓 Manage Teachers
+                </a>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if message.tags %}bg-{{ message.tags }}-900/50 border border-{{ message.tags }}-700{% else %}bg-blue-900/50 border border-blue-700{% endif %} text-slate-900 dark:text-slate-100">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+    </header>
+
+    <!-- Information Banner -->
+    <div class="w-full mb-8 bg-gradient-to-r from-purple-950 via-indigo-950 to-slate-900 border border-purple-500/40 rounded-2xl p-5 shadow-2xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-400/50 flex items-center justify-center text-xl shrink-0">
+                📦
+            </div>
+            <div>
+                <h2 class="text-base font-bold tracking-wide text-purple-200">Archived Records Box Information</h2>
+                <p class="text-xs text-purple-300 mt-0.5 font-medium">
+                    Applications here are preserved with full editing, viewing, and filter capabilities, but are hidden from the active dashboard. To run automation, click <strong>Restore</strong> to move the application back to the active box.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <main class="w-full flex flex-col lg:flex-row gap-6 lg:gap-8">
+        <!-- Left Sidebar: Filters & Statistics -->
+        <aside class="w-full lg:w-64 shrink-0 space-y-6">
+            <!-- Search, Filter & Sort Form -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6">
+                <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-200 dark:border-slate-700 pb-2">Filter Archived Apps</h2>
+                <form method="get" class="space-y-4">
+                    <!-- Search -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Search</label>
+                        <input type="text" name="q" value="{{ query }}" placeholder="Name, ID, Phone, Email..." 
+                            class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                    </div>
+
+                    <!-- Filter by Process Status -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Status</label>
+                        <select name="status" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="">All Statuses</option>
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Filter by Payment Status -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Payment Status</label>
+                        <select name="payment" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="">All Payments</option>
+                            {% for value, label in payment_choices %}
+                                <option value="{{ value }}" {% if payment_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Filter by Teacher -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">From Teacher</label>
+                        <select name="teacher" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="">All Teachers</option>
+                            <option value="none" {% if teacher_filter == 'none' %}selected{% endif %}>No Teacher Assigned</option>
+                            {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}" {% if teacher_filter == teacher.id|stringformat:"s" %}selected{% endif %}>{{ teacher.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Created Date Range Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Created Date Range</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">From:</label>
+                                <input type="date" name="date_from" value="{{ date_from }}" 
+                                    class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">To:</label>
+                                <input type="date" name="date_to" value="{{ date_to }}" 
+                                    class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sorting -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Sort By</label>
+                        <select name="sort" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                            <option value="-created_at" {% if sort_by == '-created_at' %}selected{% endif %}>Newest First</option>
+                            <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Oldest First</option>
+                            <option value="first_name" {% if sort_by == 'first_name' %}selected{% endif %}>First Name (A-Z)</option>
+                            <option value="last_name" {% if sort_by == 'last_name' %}selected{% endif %}>Last Name (A-Z)</option>
+                        </select>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="pt-2 space-y-2">
+                        <button type="submit" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold p-3 rounded-lg shadow-lg transition-all text-sm flex items-center justify-center gap-2">
+                            🔍 Apply Filters
+                        </button>
+
+                        {% if query or status_filter or payment_filter or teacher_filter or date_from or date_to or sort_by != '-created_at' %}
+                            <a href="?reset=1" class="w-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold p-2 rounded-lg text-xs flex items-center justify-center gap-1 transition-all">
+                                ✕ Clear All Filters
+                            </a>
+                        {% endif %}
+                    </div>
+                </form>
+                
+                <!-- Export to Excel -->
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <a href="{% url 'export_applications' %}?scope=archived{% if status_filter %}&status={{ status_filter }}{% endif %}{% if payment_filter %}&payment={{ payment_filter }}{% endif %}{% if teacher_filter %}&teacher={{ teacher_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if query %}&q={{ query }}{% endif %}" 
+                       class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold p-3 rounded-lg shadow-lg transition-all text-sm flex items-center justify-center gap-2">
+                        📥 Export Excel (Archived)
+                    </a>
+                </div>
+            </div>
+
+            <!-- Stats Box -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 pb-2">Archived Statistics</h3>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 dark:text-slate-400">Total Archived:</span>
+                        <span class="font-bold text-slate-900 dark:text-slate-100">{{ stats.total_apps }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 dark:text-slate-400">Completed Success:</span>
+                        <span class="font-bold text-emerald-600 dark:text-emerald-400">{{ stats.total_success }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 dark:text-slate-400">Failed / Canceled:</span>
+                        <span class="font-bold text-rose-600 dark:text-rose-400">{{ stats.total_failed }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 dark:text-slate-400">Pending:</span>
+                        <span class="font-bold text-amber-600 dark:text-amber-400">{{ stats.total_pending }}</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Main Data Grid & Table -->
+        <section class="flex-1 min-w-0">
+            <form id="bulk-action-form" method="post" action="{% url 'bulk_action' %}">
+            {% csrf_token %}
+            
+            <!-- Bulk Actions Toolbar -->
+            <div class="mb-4 bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-3">
+                <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Bulk Actions:</span>
+                <button type="button" onclick="performAction('unarchive')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    📥 Restore Selected (Unarchive)
+                </button>
+                <button type="button" onclick="performAction('mark_paid')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    ✓ Mark Paid
+                </button>
+                <button type="button" onclick="performAction('mark_unpaid')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    ✕ Mark Unpaid
+                </button>
+                <button type="button" onclick="performAction('delete')" class="bg-red-600 hover:bg-red-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    🗑 Delete Selected
+                </button>
+                <input type="hidden" name="action" id="bulk-action-input">
+            </div>
+
+            <!-- Applications Table -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wider border-b border-slate-200 dark:border-slate-700">
+                            <th class="p-4 w-10"><input type="checkbox" id="select-all" class="w-4 h-4 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded cursor-pointer"></th>
+                            <th class="p-4">Applicant Profile</th>
+                            <th class="p-4">National ID / Phone</th>
+                            <th class="p-4">Category</th>
+                            <th class="p-4">Teacher</th>
+                            <th class="p-4">Engine Pipeline Status</th>
+                            <th class="p-4">Payment</th>
+                            <th class="p-4">Actions</th>
+                            <th class="p-4">Comment</th>
+                            <th class="p-4">Billing Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-rows">
+                        {% for app in applications %}
+                        <tr id="row-{{ app.id }}" class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:bg-slate-900/40 dark:hover:bg-slate-800 transition-colors">
+                            <td class="p-4">
+                                <input type="checkbox" name="selected_ids" value="{{ app.id }}" class="app-checkbox w-4 h-4 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded cursor-pointer">
+                            </td>
+                            <td class="p-4">
+                                <div class="font-bold text-sm text-slate-800 dark:text-slate-200">{{ app.first_name }} {{ app.last_name }}</div>
+                                <div class="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">{{ app.email|default:"No email" }}</div>
+                            </td>
+                            <td class="p-4">
+                                <div class="text-sm font-mono text-slate-700 dark:text-slate-300">{{ app.national_id }}</div>
+                                <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ app.phone_number }}</div>
+                            </td>
+                            <td class="p-4 text-sm font-semibold text-amber-600 dark:text-amber-400">
+                                {{ app.provisional_number|default:app.category }}
+                            </td>
+                            <td class="p-4 text-xs font-medium">
+                                {% if app.teacher %}
+                                    <span class="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 font-semibold inline-block whitespace-nowrap">
+                                        🎓 {{ app.teacher.name }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-slate-400 font-normal">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="p-4 font-semibold text-sm">
+                                <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
+                                    {% if app.status == 'PENDING' %} bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-transparent
+                                    {% elif app.status == 'PROCESSING' %} bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-700/50 animate-pulse
+                                    {% elif app.status == 'FINALIZING' %} bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/50 animate-pulse
+                                    {% elif app.status == 'SUCCESS' %} bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700
+                                    {% elif app.status == 'MANUAL_REVIEW_NEEDED' %} bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-700
+                                    {% else %} bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-300
+                                    {% endif %}">
+                                    {{ app.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="p-4 text-xs font-semibold">
+                                <span class="px-2 py-1 rounded {% if app.payment_status == 'PAID' %}bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300{% elif app.payment_status == 'UNPAID' %}bg-rose-100 dark:bg-red-900/50 text-rose-800 dark:text-red-300{% else %}bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-transparent{% endif %}">
+                                    {{ app.get_payment_status_display }}
+                                </span>
+                            </td>
+                            <td class="p-4 text-sm space-x-2 flex" id="actions-container-{{ app.id }}">
+                                <form method="post" action="{% url 'unarchive_application' app.id %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3 py-1 rounded text-xs transition-all flex items-center gap-1">
+                                        📥 Restore
+                                    </button>
+                                </form>
+                                <a href="{% url 'edit_application' app.id %}" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                    ✎ Edit
+                                </a>
+                                <a href="{% url 'application_details' app.id %}" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                    Details
+                                </a>
+                                <button type="button" data-app-id="{{ app.id }}" data-app-name="{{ app.first_name }} {{ app.last_name }}" onclick="openLogModal(this)" class="bg-white dark:bg-slate-700 hover:bg-slate-600 text-slate-900 dark:text-slate-100 font-medium px-3 py-1 rounded text-xs transition-all">
+                                    📄 Logs
+                                </button>
+                                <form method="post" action="{% url 'delete_application' app.id %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" onclick="return confirm('Permanently delete this application?')" class="bg-red-600 hover:bg-red-500 text-white font-medium px-3 py-1 rounded text-xs transition-all">
+                                        ✕ Delete
+                                    </button>
+                                </form>
+                            </td>
+                            <td class="p-4 text-sm text-slate-700 dark:text-slate-300" id="comment-container-{{ app.id }}">
+                                {% if app.comment %}
+                                    <div class="text-xs text-slate-600 dark:text-slate-300 italic truncate max-w-[200px]" title="{{ app.comment }}">{{ app.comment }}</div>
+                                {% else %}
+                                    <div class="text-slate-400 dark:text-slate-500">—</div>
+                                {% endif %}
+                            </td>
+                            <td class="p-4 font-mono font-bold text-sm tracking-wide text-emerald-600 dark:text-emerald-400" id="billing-container-{{ app.id }}">
+                                {{ app.billing_number|default:"—" }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
+                                No archived applications found in this box.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            </form>
+        </section>
+    </main>
+
+    <!-- Detailed Execution Logs Modal -->
+    <div id="log-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <span>📄 Execution Logs</span>
+                        <span id="modal-app-name" class="text-purple-600 dark:text-purple-400 font-mono text-sm"></span>
+                    </h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Real-time terminal execution log output for archived record</p>
+                </div>
+                <button type="button" onclick="closeLogModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl font-bold p-1">
+                    &times;
+                </button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto bg-slate-950 font-mono text-xs text-emerald-400 rounded-b-2xl">
+                <pre id="modal-log-content" class="whitespace-pre-wrap leading-relaxed">Loading logs...</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        function performAction(actionName) {
+            const checked = document.querySelectorAll('.app-checkbox:checked');
+            if (checked.length === 0) {
+                alert('Please select at least one application.');
+                return;
+            }
+            if (actionName === 'delete' && !confirm('Are you sure you want to delete the selected applications?')) {
+                return;
+            }
+            document.getElementById('bulk-action-input').value = actionName;
+            document.getElementById('bulk-action-form').submit();
+        }
+
+        document.getElementById('select-all')?.addEventListener('change', function(e) {
+            const checkboxes = document.querySelectorAll('.app-checkbox');
+            checkboxes.forEach(cb => cb.checked = e.target.checked);
+        });
+
+        function openLogModal(btn) {
+            const appId = btn.getAttribute('data-app-id');
+            const appName = btn.getAttribute('data-app-name');
+            document.getElementById('modal-app-name').innerText = `(${appName})`;
+            document.getElementById('modal-log-content').innerText = 'Fetching logs from database...';
+            document.getElementById('log-modal').classList.remove('hidden');
+
+            fetch(`/api/logs/${appId}/`)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('modal-log-content').innerText = data.log_output || 'No logs recorded for this application yet.';
+                })
+                .catch(err => {
+                    document.getElementById('modal-log-content').innerText = 'Error loading logs: ' + err;
+                });
+        }
+
+        function closeLogModal() {
+            document.getElementById('log-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

@@ -11,7 +11,39 @@ class NavigationMixin:
         # Check active session status
         is_valid = self.validate_agent_session(self.page)
         if not is_valid:
-            self.log_message("Active session is expired or missing. Proceeding with current state...", level="WARNING")
+            self.log_message("Active session is expired or missing. Waiting 10 seconds for user action (Continue or Sign In)...", level="WARNING")
+            
+            # Reset user_response field in DB to WAITING to trigger global popup
+            self.set_user_response("WAITING")
+            
+            start_time = time.time()
+            user_action = None
+            while time.time() - start_time < 10:
+                resp = self.get_user_response()
+                if resp in ["continue", "sign_in"]:
+                    user_action = resp
+                    break
+                time.sleep(0.5)
+            
+            # Clear response to hide popup
+            if user_action not in ["continue", "sign_in"]:
+                self.set_user_response(None)
+            
+            if user_action == "continue":
+                self.log_message("User chose to continue anyway. Proceeding with current state...")
+            elif user_action == "sign_in":
+                self.run_interactive_login()
+                self.log_message("Manual login finished. Aborting current task to allow a clean restart.", level="WARNING")
+                raise AbortTaskException("Task aborted after manual sign-in. Please re-run the application.")
+            else:
+                self.log_message("No response received within 10 seconds. Continuing with current state...")
+
+        self.page.locator('text="Polisi"').click()
+        time.sleep(1)
+
+        self.log_message("Selecting driving registration menu entry layout links...")
+        self.page.locator('text="Kwiyandikisha gukora ikizamini cyo gutwara ibinyabiziga"').first.click()
+        self.page.wait_for_selector("mat-dialog-container", timeout=10000)
 
         if self.booking_record and self.booking_record.provisional_number:
             self.log_message("Detected Provisional ID. Configuring Definitive License (BURANDU) application.")
@@ -58,6 +90,12 @@ class NavigationMixin:
                 else:
                     self.log_message("Max attempts reached for service selection. Propagating error.", level="ERROR")
                     raise e
+        self.page.locator("mat-dialog-container ng-select").click()
+        self.page.locator(f'.ng-dropdown-panel .ng-option:has-text("{target_service}")').click()
+        time.sleep(0.5)
+
+        self.page.locator('mat-dialog-container button:has-text("Saba")').click()
+        self.page.wait_for_load_state("networkidle")
 
         self.handle_identity_verification(national_id, verification_data)
         self.capture_error_if_any()

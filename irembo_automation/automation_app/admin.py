@@ -2,7 +2,15 @@ import threading
 from django.contrib import admin
 from django.utils.html import format_html
 from django.contrib import messages
-from .models import ClientApplication
+from .models import ClientApplication, Teacher
+
+class TeacherAdmin(admin.ModelAdmin):
+    list_display = ('name', 'phone_number', 'created_at')
+    search_fields = ('name', 'phone_number')
+    ordering = ('name',)
+
+# Also register with default admin.site if used
+admin.site.register(Teacher, TeacherAdmin)
 # Direct import of your background thread offloader from views
 from .views import run_automation_worker 
 from django.contrib.admin import AdminSite
@@ -158,3 +166,4 @@ class CustomAdminSite(AdminSite):
 
 custom_admin_site = CustomAdminSite(name='automation_admin')
 custom_admin_site.register(ClientApplication, ClientApplicationAdmin)
+admin.site.register(ClientApplication, ClientApplicationAdmin)
