@@ -1,7 +1,8 @@
 # automation_app/automation_engine/polling.py
 import random
 import time
-from .utils import run_in_db_thread
+import re
+from .utils import run_in_db_thread, is_exact_target_center
 
 class PollingMixin:
     def _get_time_options(self):
@@ -129,13 +130,12 @@ class PollingMixin:
                 return False
                 
         # Validate District
-        if selected_dist:
-            if "KICUKIRO" not in selected_dist.upper():
-                return False
+        if not selected_dist or "KICUKIRO" not in selected_dist.upper():
+            return False
                 
         return True
 
-    def evaluate_and_select_slot(self, target_center="BUSANZA"):
+    def evaluate_and_select_slot(self, target_center="BUSANZA AUTOMATED CENTER"):
         badge_element = self.page.locator('.appointments-header h2.title span.badge')
         if not badge_element.is_visible():
             return False
@@ -149,7 +149,7 @@ class PollingMixin:
             if "dimmed" in (slot.get_attribute("class") or ""):
                 continue
 
-            center_details = slot.locator(".center").inner_text().upper()
+            center_details = slot.locator(".center").inner_text().strip()
             capacity_text = slot.locator(".capacity-circle").inner_text().strip()
 
             try:
@@ -157,7 +157,8 @@ class PollingMixin:
             except ValueError:
                 capacity = 0
 
-            if target_center in center_details and capacity > 0:
+            # Strict center matching to eliminate false positives like 'KICUKIRO - BUSANZA SITE (KIC)'
+            if is_exact_target_center(center_details, target_center) and capacity > 0:
                 print(f"[Slot Match] Locking center location: {center_details} ({capacity} seats)")
                 slot.click()
                 time.sleep(0.5)

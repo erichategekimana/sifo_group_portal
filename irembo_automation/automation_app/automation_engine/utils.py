@@ -4,7 +4,28 @@ import time
 import os
 import signal
 import concurrent.futures
+import re
 from contextlib import contextmanager
+
+def is_exact_target_center(center_text, target_center="BUSANZA AUTOMATED CENTER"):
+    """
+    Strict helper to match the exact target center and avoid false positives
+    (e.g., distinguishing 'BUSANZA AUTOMATED CENTER' from 'KICUKIRO - BUSANZA SITE (KIC)').
+    """
+    if not center_text:
+        return False
+    text_upper = center_text.strip().upper()
+    target_upper = target_center.strip().upper()
+    
+    if "BUSANZA" in target_upper:
+        if "BUSANZA" not in text_upper:
+            return False
+        if "SITE" in text_upper:
+            return False
+        if ("AUTOMATED" in target_upper or "AUTOMATIQUE" in target_upper) and not ("AUTOMATED" in text_upper or "AUTOMATIQUE" in text_upper):
+            return False
+        return True
+    return target_upper in text_upper
 
 def kill_browser_processes(user_data_dir):
     """
