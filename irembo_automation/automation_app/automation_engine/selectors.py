@@ -134,3 +134,171 @@ class SelectorsMixin:
             options.first.click()
 
         time.sleep(1)
+
+    def select_category_dropdown(self, control_name, target_category):
+        target_upper = target_category.strip().upper()
+        target_is_at = "AT" in target_upper or "AUTOMATIQUE" in target_upper
+
+        # Clean target code (e.g. if target is "Urwego D" or "D(AT)", extract "D")
+        clean_target = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', target_upper, flags=re.IGNORECASE).strip()
+        clean_target_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_target, flags=re.IGNORECASE).strip()
+        if not clean_target_code:
+            clean_target_code = target_upper
+
+        print(f"[Category Selection] Attempting to select exact category: '{target_category}' (clean code: '{clean_target_code}', is_AT: {target_is_at}) using control '{control_name}'")
+
+        all_option_texts = []
+
+        # Outer fallback loop: try up to 4 times to open dropdown and find the exact category
+        for attempt in range(1, 5):
+            # Locate dropdown
+            dropdown = self.page.locator(f'ng-select[formcontrolname="{control_name}"]')
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select[formcontrolname*="{control_name}" i]').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator(f'ng-select:has-text("{control_name}")').first
+            if not dropdown.is_visible():
+                dropdown = self.page.locator('ng-select').first
+
+            if not dropdown.is_visible():
+                print(f"[Category Selection] Dropdown control '{control_name}' not visible on attempt {attempt}.")
+                time.sleep(1.5)
+                continue
+
+            # Ensure dropdown panel is open
+            panel_opened = False
+            for click_attempt in range(3):
+                try:
+                    dropdown.click(force=True, timeout=5000)
+                    self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=4000)
+                    panel_opened = True
+                    break
+                except Exception as e:
+                    print(f"[Category Selection] Click attempt {click_attempt+1} failed to open panel. Retrying...")
+                    time.sleep(1.0)
+            
+            if not panel_opened:
+                print(f"[Category Selection] Could not open dropdown panel on attempt {attempt}.")
+                time.sleep(1.5)
+                continue
+
+            # Give Angular a moment to render options inside .ng-dropdown-panel
+            time.sleep(0.5)
+            options = self.page.locator('.ng-dropdown-panel .ng-option')
+            try:
+                options.first.wait_for(state="visible", timeout=3000)
+            except Exception:
+                print(f"[Category Selection] Options did not become visible on attempt {attempt}.")
+                time.sleep(1.0)
+                continue
+
+            count = options.count()
+            current_texts = []
+            matched_option = None
+
+            # Tier 1: Exact string match (after filtering AT mutual exclusion)
+            for i in range(count):
+                opt = options.nth(i)
+                text = opt.inner_text().strip()
+                current_texts.append(text)
+                if text not in all_option_texts:
+                    all_option_texts.append(text)
+                
+                text_upper = text.upper()
+                opt_is_at = "AT" in text_upper or "AUTOMATIQUE" in text_upper
+
+                # Rule 1: Mutual exclusion between AT and Manual
+                if target_is_at and not opt_is_at:
+                    continue
+                if not target_is_at and opt_is_at:
+                    continue
+
+                if text_upper == target_upper:
+                    matched_option = opt
+                    break
+
+            # Tier 2: Normalized exact code match (e.g. "Urwego D" == "D" or "D - Imodoka" == "D")
+            if matched_option is None:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text_upper = opt.inner_text().strip().upper()
+                    opt_is_at = "AT" in text_upper or "AUTOMATIQUE" in text_upper
+
+                    if target_is_at and not opt_is_at:
+                        continue
+                    if not target_is_at and opt_is_at:
+                        continue
+
+                    clean_opt = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', text_upper, flags=re.IGNORECASE).strip()
+                    clean_opt_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_opt, flags=re.IGNORECASE).strip()
+                    
+                    if clean_opt_code == clean_target_code and clean_opt_code != "":
+                        matched_option = opt
+                        break
+
+            # Tier 3: Word boundary / token match (e.g., searching for word \bD\b inside option text after AT filtering)
+            if matched_option is None:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text_upper = opt.inner_text().strip().upper()
+                    opt_is_at = "AT" in text_upper or "AUTOMATIQUE" in text_upper
+
+                    if target_is_at and not opt_is_at:
+                        continue
+                    if not target_is_at and opt_is_at:
+                        continue
+
+                    # Regex word boundary match for the category code (e.g., \bD\b in "Imodoka (D)" or "Urwego D")
+                    pattern = r'\b' + re.escape(clean_target_code) + r'\b'
+                    if re.search(pattern, text_upper):
+                        matched_option = opt
+                        break
+
+            # Tier 4: Substring fallback (ONLY after strict AT filtering and when clean_target_code is at least 1 char)
+            if matched_option is None and len(clean_target_code) >= 1:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text_upper = opt.inner_text().strip().upper()
+                    opt_is_at = "AT" in text_upper or "AUTOMATIQUE" in text_upper
+
+                    if target_is_at and not opt_is_at:
+                        continue
+                    if not target_is_at and opt_is_at:
+                        continue
+
+                    if clean_target_code in text_upper:
+                        matched_option = opt
+                        break
+
+            if matched_option is not None:
+                matched_text = matched_option.inner_text().strip()
+                print(f"[Category Selection] Matched option '{matched_text}' on attempt {attempt}. Clicking...")
+                matched_option.click()
+                time.sleep(1)
+                return True
+
+            print(f"[Category Selection] Attempt {attempt}: Category '{target_category}' not found in current options: {current_texts}. Retrying as fallback...")
+            # Close dropdown panel by pressing Escape or clicking body to reset before next attempt
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+            time.sleep(random.uniform(1.2, 2.0))
+
+        # If all attempts failed, record Kinyarwanda error without choosing different category
+        error_msg = f"Icyiciro cya perimi mwasabye ({target_category}) ntikibonetse mu byiciro bihari ({', '.join(all_option_texts)})"
+        print(f"[Category Selection Error] {error_msg}")
+        
+        if getattr(self, 'booking_record', None):
+            from .utils import run_in_db_thread
+            record = self.booking_record
+            def _record_error():
+                record.failure_reason = 'ICYICIRO_NTIKIBONETSE'
+                record.last_error = error_msg
+                banner = f"\n=== [IKOSA RYABONETSE / ERROR DETECTED] ===\nReason Code: ICYICIRO_NTIKIBONETSE\nMessage: {error_msg}\n============================================\n"
+                record.log_output = (record.log_output or "") + banner
+                record.status = 'FAILED'
+                record.save(update_fields=["failure_reason", "last_error", "log_output", "status"])
+            run_in_db_thread(_record_error)
+
+        raise ValueError(f"Irembo Error: ICYICIRO_NTIKIBONETSE - {error_msg}")

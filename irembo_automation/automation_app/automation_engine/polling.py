@@ -130,7 +130,7 @@ class PollingMixin:
             category_control = "categoryFormControl"
             if not self.page.locator(f'ng-select[formcontrolname="{category_control}"]').is_visible():
                 category_control = "licenseCategoryFormControl"
-            self.set_angular_dropdown(category_control, self.booking_record.category)
+            self.select_category_dropdown(category_control, self.booking_record.category)
         else:
             self.log_message("No target category specified. Skipping.", level="WARNING")
 
