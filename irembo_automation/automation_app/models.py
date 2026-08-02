@@ -20,6 +20,20 @@ rwanda_phone_validator = RegexValidator(
 )
 
 
+class Teacher(models.Model):
+    name = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=15, blank=True, null=True, help_text="Teacher's contact phone number")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Teacher"
+        verbose_name_plural = "Teachers"
+
+    def __str__(self):
+        return self.name
+
+
 class ClientApplication(models.Model):
     class ProcessStatus(models.TextChoices):
         PENDING = 'PENDING', 'Pending Slot Check'
@@ -66,6 +80,40 @@ class ClientApplication(models.Model):
         help_text="Provisional license string. Required for new Definitive applications; leave blank for Category Upgrades."
     )
 
+    # Examination Location & Slot Details
+    district = models.CharField(
+        max_length=100,
+        default='Kicukiro',
+        blank=True,
+        null=True,
+        help_text="Akarere (District)"
+    )
+    exam_date = models.DateField(
+        blank=True,
+        null=True,
+        help_text="Itariki (Date)"
+    )
+    exam_time = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Igihe (Time)"
+    )
+    working_site = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Aho ikizamini kizabera (Working site - Kicukiro only)"
+    )
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='applications',
+        help_text="From Teacher"
+    )
+
     # Automation State Machine
     status = models.CharField(
         max_length=20,
@@ -88,6 +136,12 @@ class ClientApplication(models.Model):
     log_output = models.TextField(blank=True, null=True, help_text="Detailed execution logs for the application task")
     user_response = models.CharField(max_length=50, blank=True, null=True, help_text="Temporary field for user interaction during process")
 
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True if application is archived (hidden from active dashboard box)"
+    )
+
     # Metadata Audit Trail
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -100,6 +154,7 @@ class ClientApplication(models.Model):
         indexes = [
             models.Index(fields=['status']),
             models.Index(fields=['national_id']),
+            models.Index(fields=['is_archived']),
         ]
 
     def __str__(self):

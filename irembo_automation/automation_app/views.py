@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.utils import timezone
-from .models import ClientApplication, ApplicationRunHistory, SystemActivityLog
+from .models import ClientApplication, ApplicationRunHistory, SystemActivityLog, Teacher
 from automation_app.automation_engine import IremboAutomationEngine
 from automation_app.automation_engine.utils import run_in_db_thread, AbortTaskException
 from playwright.sync_api import sync_playwright  # type: ignore[import]
@@ -187,15 +187,88 @@ def run_automation_worker(application_id):
             
     run_in_db_thread(_archive_run)
 
+RWANDA_DISTRICTS = [
+    'Kicukiro', 'Gasabo', 'Nyarugenge',
+    'Bugesera', 'Gatsibo', 'Kayonza', 'Kirehe', 'Ngoma', 'Nyagatare', 'Rwamagana',
+    'Burera', 'Gakenke', 'Gicumbi', 'Musanze', 'Rulindo',
+    'Gisagara', 'Huye', 'Kamonyi', 'Muhanga', 'Nyamagabe', 'Nyanza', 'Nyaruguru', 'Rruhango',
+    'Karongi', 'Ngororero', 'Nyabihu', 'Nyamasheke', 'Rubavu', 'Rusizi', 'Rutsiro'
+]
+
+def manage_teachers(request):
+    """View to list and create new driving teachers."""
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        phone_number = request.POST.get('phone_number', '').strip()
+        if name:
+            teacher = Teacher.objects.create(name=name, phone_number=phone_number)
+            SystemActivityLog.objects.create(
+                action_type=SystemActivityLog.ActionType.CREATE,
+                description=f"Added driving teacher '{teacher.name}'",
+                application_name=teacher.name
+            )
+            messages.success(request, f"Teacher '{name}' added successfully.")
+        else:
+            messages.error(request, "Teacher name is required.")
+        return redirect('manage_teachers')
+
+    teachers = Teacher.objects.all()
+    return render(request, 'automation/teachers.html', {'teachers': teachers})
+
+def delete_teacher(request, teacher_id):
+    """View to delete a teacher."""
+    if request.method == 'POST':
+        teacher = get_object_or_404(Teacher, id=teacher_id)
+        name = teacher.name
+        teacher.delete()
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.DELETE,
+            description=f"Deleted driving teacher '{name}'",
+            application_name=name
+        )
+        messages.success(request, f"Teacher '{name}' deleted successfully.")
+    return redirect('manage_teachers')
+
 def dashboard(request):
     """Renders the central monitoring dashboard panel grid with search, filter, and sort."""
-    query = request.GET.get('q', '')
-    status_filter = request.GET.get('status', '')
-    payment_filter = request.GET.get('payment', '')
-    sort_by = request.GET.get('sort', '-created_at')
-    
-    # Start with all applications
-    applications = ClientApplication.objects.all()
+    if request.GET.get('reset') == '1':
+        if 'dashboard_filters' in request.session:
+            del request.session['dashboard_filters']
+        return redirect('dashboard')
+
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'date_from', 'date_to', 'sort']
+    has_get_filters = any(key in request.GET for key in filter_keys)
+
+    if has_get_filters:
+        query = request.GET.get('q', '').strip()
+        status_filter = request.GET.get('status', '').strip()
+        payment_filter = request.GET.get('payment', '').strip()
+        teacher_filter = request.GET.get('teacher', '').strip()
+        date_from = request.GET.get('date_from', '').strip()
+        date_to = request.GET.get('date_to', '').strip()
+        sort_by = request.GET.get('sort', '-created_at').strip()
+
+        request.session['dashboard_filters'] = {
+            'q': query,
+            'status': status_filter,
+            'payment': payment_filter,
+            'teacher': teacher_filter,
+            'date_from': date_from,
+            'date_to': date_to,
+            'sort': sort_by,
+        }
+    else:
+        saved_filters = request.session.get('dashboard_filters', {})
+        query = saved_filters.get('q', '')
+        status_filter = saved_filters.get('status', '')
+        payment_filter = saved_filters.get('payment', '')
+        teacher_filter = saved_filters.get('teacher', '')
+        date_from = saved_filters.get('date_from', '')
+        date_to = saved_filters.get('date_to', '')
+        sort_by = saved_filters.get('sort', '-created_at')
+
+    # Start with active (non-archived) applications ONLY
+    applications = ClientApplication.objects.select_related('teacher').filter(is_archived=False)
     
     # Apply search filter
     if query:
@@ -205,7 +278,10 @@ def dashboard(request):
             Q(national_id__icontains=query) |
             Q(phone_number__icontains=query) |
             Q(email__icontains=query) |
-            Q(billing_number__icontains=query)
+            Q(billing_number__icontains=query) |
+            Q(district__icontains=query) |
+            Q(working_site__icontains=query) |
+            Q(teacher__name__icontains=query)
         )
     
     # Apply status filter
@@ -215,44 +291,235 @@ def dashboard(request):
     # Apply payment filter
     if payment_filter:
         applications = applications.filter(payment_status=payment_filter)
+
+    # Apply teacher filter
+    if teacher_filter == 'none':
+        applications = applications.filter(teacher__isnull=True)
+    elif teacher_filter:
+        applications = applications.filter(teacher_id=teacher_filter)
+
+    # Apply date range filter (Created Date)
+    if date_from:
+        try:
+            applications = applications.filter(created_at__date__gte=date_from)
+        except Exception:
+            pass
+
+    if date_to:
+        try:
+            applications = applications.filter(created_at__date__lte=date_to)
+        except Exception:
+            pass
     
     # Apply sorting
     applications = applications.order_by(sort_by)
     
     # Pagination
-    paginator = Paginator(applications, 25)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-    
-    # System Statistics
+    # System Statistics (Filtered to active applications)
     now = timezone.now()
     start_of_week = now - timedelta(days=now.weekday())
+    active_apps_qs = ClientApplication.objects.filter(is_archived=False)
     stats = {
-        'total_apps': ClientApplication.objects.count(),
-        'total_failed': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.FAILED).count(),
-        'total_success': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.SUCCESS).count(),
-        'total_in_progress': ClientApplication.objects.filter(status__in=[ClientApplication.ProcessStatus.PROCESSING, ClientApplication.ProcessStatus.FINALIZING]).count(),
-        'total_completed_week': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.SUCCESS, updated_at__gte=start_of_week).count(),
-        'total_pending': ClientApplication.objects.filter(status=ClientApplication.ProcessStatus.PENDING).count(),
+        'total_apps': active_apps_qs.count(),
+        'total_failed': active_apps_qs.filter(status=ClientApplication.ProcessStatus.FAILED).count(),
+        'total_success': active_apps_qs.filter(status=ClientApplication.ProcessStatus.SUCCESS).count(),
+        'total_in_progress': active_apps_qs.filter(status__in=[ClientApplication.ProcessStatus.PROCESSING, ClientApplication.ProcessStatus.FINALIZING]).count(),
+        'total_completed_week': active_apps_qs.filter(status=ClientApplication.ProcessStatus.SUCCESS, updated_at__gte=start_of_week).count(),
+        'total_pending': active_apps_qs.filter(status=ClientApplication.ProcessStatus.PENDING).count(),
     }
+
+    teachers = Teacher.objects.all()
+    active_count = active_apps_qs.count()
+    archived_count = ClientApplication.objects.filter(is_archived=True).count()
     
     context = {
-        'page_obj': page_obj,
-        'applications': page_obj.object_list,
+        'applications': applications,
         'query': query,
         'status_filter': status_filter,
         'payment_filter': payment_filter,
+        'teacher_filter': teacher_filter,
+        'date_from': date_from,
+        'date_to': date_to,
         'sort_by': sort_by,
         'status_choices': ClientApplication.ProcessStatus.choices,
         'payment_choices': ClientApplication.PaymentStatus.choices,
+        'teachers': teachers,
         'stats': stats,
+        'active_count': active_count,
+        'archived_count': archived_count,
+        'is_archived_view': False,
     }
     return render(request, 'automation/dashboard.html', context)
 
+
+def archived_dashboard(request):
+    """Renders the archived applications box dashboard with search, filter, and sort."""
+    if request.GET.get('reset') == '1':
+        if 'archived_dashboard_filters' in request.session:
+            del request.session['archived_dashboard_filters']
+        return redirect('archived_dashboard')
+
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'date_from', 'date_to', 'sort']
+    has_get_filters = any(key in request.GET for key in filter_keys)
+
+    if has_get_filters:
+        query = request.GET.get('q', '').strip()
+        status_filter = request.GET.get('status', '').strip()
+        payment_filter = request.GET.get('payment', '').strip()
+        teacher_filter = request.GET.get('teacher', '').strip()
+        date_from = request.GET.get('date_from', '').strip()
+        date_to = request.GET.get('date_to', '').strip()
+        sort_by = request.GET.get('sort', '-created_at').strip()
+
+        request.session['archived_dashboard_filters'] = {
+            'q': query,
+            'status': status_filter,
+            'payment': payment_filter,
+            'teacher': teacher_filter,
+            'date_from': date_from,
+            'date_to': date_to,
+            'sort': sort_by,
+        }
+    else:
+        saved_filters = request.session.get('archived_dashboard_filters', {})
+        query = saved_filters.get('q', '')
+        status_filter = saved_filters.get('status', '')
+        payment_filter = saved_filters.get('payment', '')
+        teacher_filter = saved_filters.get('teacher', '')
+        date_from = saved_filters.get('date_from', '')
+        date_to = saved_filters.get('date_to', '')
+        sort_by = saved_filters.get('sort', '-created_at')
+
+    # Query ONLY archived applications
+    applications = ClientApplication.objects.select_related('teacher').filter(is_archived=True)
+
+    if query:
+        applications = applications.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(national_id__icontains=query) |
+            Q(phone_number__icontains=query) |
+            Q(email__icontains=query) |
+            Q(billing_number__icontains=query) |
+            Q(district__icontains=query) |
+            Q(working_site__icontains=query) |
+            Q(teacher__name__icontains=query)
+        )
+
+    if status_filter:
+        applications = applications.filter(status=status_filter)
+
+    if payment_filter:
+        applications = applications.filter(payment_status=payment_filter)
+
+    if teacher_filter == 'none':
+        applications = applications.filter(teacher__isnull=True)
+    elif teacher_filter:
+        applications = applications.filter(teacher_id=teacher_filter)
+
+    if date_from:
+        try:
+            applications = applications.filter(created_at__date__gte=date_from)
+        except Exception:
+            pass
+
+    if date_to:
+        try:
+            applications = applications.filter(created_at__date__lte=date_to)
+        except Exception:
+            pass
+
+    applications = applications.order_by(sort_by)
+
+    archived_apps_qs = ClientApplication.objects.filter(is_archived=True)
+    stats = {
+        'total_apps': archived_apps_qs.count(),
+        'total_failed': archived_apps_qs.filter(status=ClientApplication.ProcessStatus.FAILED).count(),
+        'total_success': archived_apps_qs.filter(status=ClientApplication.ProcessStatus.SUCCESS).count(),
+        'total_in_progress': archived_apps_qs.filter(status__in=[ClientApplication.ProcessStatus.PROCESSING, ClientApplication.ProcessStatus.FINALIZING]).count(),
+        'total_pending': archived_apps_qs.filter(status=ClientApplication.ProcessStatus.PENDING).count(),
+    }
+
+    teachers = Teacher.objects.all()
+    active_count = ClientApplication.objects.filter(is_archived=False).count()
+    archived_count = archived_apps_qs.count()
+
+    context = {
+        'applications': applications,
+        'query': query,
+        'status_filter': status_filter,
+        'payment_filter': payment_filter,
+        'teacher_filter': teacher_filter,
+        'date_from': date_from,
+        'date_to': date_to,
+        'sort_by': sort_by,
+        'status_choices': ClientApplication.ProcessStatus.choices,
+        'payment_choices': ClientApplication.PaymentStatus.choices,
+        'teachers': teachers,
+        'stats': stats,
+        'active_count': active_count,
+        'archived_count': archived_count,
+        'is_archived_view': True,
+    }
+    return render(request, 'automation/archived_dashboard.html', context)
+
+
+@require_POST
+def archive_application(request, application_id):
+    """Move an application out of the active box into archived status."""
+    app = get_object_or_404(ClientApplication, id=application_id)
+    name = f"{app.first_name} {app.last_name}"
+    app.is_archived = True
+    app.save(update_fields=['is_archived', 'updated_at'])
+    
+    SystemActivityLog.objects.create(
+        action_type=SystemActivityLog.ActionType.EDIT,
+        description=f"Archived application (moved out of active box)",
+        application_name=name,
+        application_id=app.id
+    )
+    messages.success(request, f"Application for '{name}' moved to Archive box.")
+    referer = request.META.get('HTTP_REFERER')
+    if referer and 'archived' in referer:
+        return redirect('archived_dashboard')
+    return redirect('dashboard')
+
+
+@require_POST
+def unarchive_application(request, application_id):
+    """Restore an archived application back to the active dashboard box."""
+    app = get_object_or_404(ClientApplication, id=application_id)
+    name = f"{app.first_name} {app.last_name}"
+    app.is_archived = False
+    app.save(update_fields=['is_archived', 'updated_at'])
+    
+    SystemActivityLog.objects.create(
+        action_type=SystemActivityLog.ActionType.EDIT,
+        description=f"Unarchived/Restored application to active box",
+        application_name=name,
+        application_id=app.id
+    )
+    messages.success(request, f"Application for '{name}' restored to active dashboard box.")
+    referer = request.META.get('HTTP_REFERER')
+    if referer and 'archived' in referer:
+        return redirect('archived_dashboard')
+    return redirect('dashboard')
+
 def create_application(request):
     """Handle both GET (form display) and POST (form submission) for creating applications."""
+    teachers = Teacher.objects.all()
     if request.method == 'POST':
         try:
+            teacher_id = request.POST.get('teacher')
+            teacher_obj = None
+            if teacher_id and teacher_id != 'none':
+                teacher_obj = Teacher.objects.filter(id=teacher_id).first()
+
+            exam_date_val = request.POST.get('exam_date') or None
+
+            district_val = request.POST.get('district', 'Kicukiro')
+            working_site_val = request.POST.get('working_site', '') if district_val == 'Kicukiro' else ''
+
             app = ClientApplication(
                 first_name=request.POST.get('first_name'),
                 last_name=request.POST.get('last_name'),
@@ -263,6 +530,11 @@ def create_application(request):
                 category=request.POST.get('category'),
                 provisional_number=request.POST.get('provisional_number', ''),
                 payment_status=request.POST.get('payment_status', 'UNPAID'),
+                district=district_val,
+                exam_date=exam_date_val,
+                exam_time=request.POST.get('exam_time', ''),
+                working_site=working_site_val,
+                teacher=teacher_obj,
             )
             app.full_clean()
             app.save()
@@ -280,22 +552,26 @@ def create_application(request):
             messages.error(request, f'Error creating application: {str(e)}')
             return render(request, 'automation/create_application.html', {
                 'payment_choices': ClientApplication.PaymentStatus.choices,
+                'teachers': teachers,
+                'districts': RWANDA_DISTRICTS,
             })
     
     return render(request, 'automation/create_application.html', {
         'payment_choices': ClientApplication.PaymentStatus.choices,
+        'teachers': teachers,
+        'districts': RWANDA_DISTRICTS,
     })
 
 def edit_application(request, application_id):
     """Handle editing an existing application."""
     app = get_object_or_404(ClientApplication, id=application_id)
+    teachers = Teacher.objects.all()
     
     if request.method == 'POST':
         try:
             app.first_name = request.POST.get('first_name', app.first_name)
             app.last_name = request.POST.get('last_name', app.last_name)
             app.email = request.POST.get('email', app.email)
-            # Persist additional editable fields so admin/frontend edits actually save
             app.national_id = request.POST.get('national_id', app.national_id)
             app.birth_date = request.POST.get('birth_date', app.birth_date)
             app.phone_number = request.POST.get('phone_number', app.phone_number)
@@ -306,6 +582,20 @@ def edit_application(request, application_id):
             app.payment_status = request.POST.get('payment_status', app.payment_status)
             app.status = request.POST.get('status', app.status)
             app.comment = request.POST.get('comment', app.comment)
+            app.district = request.POST.get('district', app.district)
+            
+            exam_date_val = request.POST.get('exam_date')
+            app.exam_date = exam_date_val if exam_date_val else None
+
+            app.exam_time = request.POST.get('exam_time', app.exam_time)
+            app.working_site = request.POST.get('working_site', '') if app.district == 'Kicukiro' else ''
+
+            teacher_id = request.POST.get('teacher')
+            if teacher_id == 'none' or not teacher_id:
+                app.teacher = None
+            else:
+                app.teacher = Teacher.objects.filter(id=teacher_id).first()
+
             app.full_clean()
             app.save()
             
@@ -325,6 +615,8 @@ def edit_application(request, application_id):
         'app': app,
         'status_choices': ClientApplication.ProcessStatus.choices,
         'payment_choices': ClientApplication.PaymentStatus.choices,
+        'teachers': teachers,
+        'districts': RWANDA_DISTRICTS,
     }
     return render(request, 'automation/edit_application.html', context)
 
@@ -361,16 +653,21 @@ def bulk_action(request):
     """Handle bulk actions on selected applications."""
     action = request.POST.get('action')
     selected_ids = request.POST.getlist('selected_ids')
+    referer = request.META.get('HTTP_REFERER')
+    is_from_archived = referer and 'archived' in referer
+    redirect_target = 'archived_dashboard' if is_from_archived else 'dashboard'
     
     if not selected_ids:
         messages.warning(request, 'No applications selected')
-        return redirect('dashboard')
+        return redirect(redirect_target)
     
     apps = ClientApplication.objects.filter(id__in=selected_ids)
     
     if action == 'run_engine':
+        # Ignore archived applications
+        active_apps = apps.filter(is_archived=False)
         count = 0
-        for app in apps:
+        for app in active_apps:
             if app.status in [ClientApplication.ProcessStatus.PENDING, ClientApplication.ProcessStatus.FAILED, ClientApplication.ProcessStatus.CANCELED]:
                 worker_thread = threading.Thread(target=run_automation_worker, args=(app.id,))
                 worker_thread.daemon = True
@@ -384,6 +681,28 @@ def bulk_action(request):
                 )
         messages.success(request, f'Started automation for {count} applications')
     
+    elif action == 'archive':
+        count = apps.count()
+        apps.update(is_archived=True)
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Moved {count} applications to Archive box",
+            application_name=f"Multiple Applications",
+            application_id=None
+        )
+        messages.success(request, f'Moved {count} applications to Archive box.')
+
+    elif action == 'unarchive':
+        count = apps.count()
+        apps.update(is_archived=False)
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Restored {count} applications to active dashboard",
+            application_name=f"Multiple Applications",
+            application_id=None
+        )
+        messages.success(request, f'Restored {count} applications to active dashboard box.')
+
     elif action == 'delete':
         count = apps.count()
         app_names = list(apps.values_list('first_name', 'last_name'))
@@ -419,12 +738,16 @@ def bulk_action(request):
         )
         messages.success(request, f'Marked {apps.count()} applications as unpaid')
     
-    return redirect('dashboard')
+    return redirect(redirect_target)
 
 def start_automation(request, application_id):
     """Spawns an isolated operational thread for a specific target applicant."""
     application = get_object_or_404(ClientApplication, id=application_id)
     
+    if application.is_archived:
+        messages.error(request, "Archived applications cannot be run by automation engine. Please restore/unarchive it first.")
+        return redirect('archived_dashboard')
+
     # Only allow ignition if the process isn't already running or completed
     if application.status in [ClientApplication.ProcessStatus.PENDING, ClientApplication.ProcessStatus.FAILED, ClientApplication.ProcessStatus.CANCELED]:
         
@@ -619,13 +942,25 @@ def export_applications(request):
     from django.db.models import Q
     from .models import ClientApplication
 
-    query = request.GET.get('q', '')
-    status_filter = request.GET.get('status', '')
-    payment_filter = request.GET.get('payment', '')
-    sort_by = request.GET.get('sort', '-created_at')
+    scope = request.GET.get('scope', '')
+    referer = request.META.get('HTTP_REFERER', '')
+    is_archived_scope = (scope == 'archived') or ('archived' in referer)
 
-    # Filter queryset exactly as in dashboard
-    applications = ClientApplication.objects.all()
+    if is_archived_scope:
+        saved_filters = request.session.get('archived_dashboard_filters', {})
+    else:
+        saved_filters = request.session.get('dashboard_filters', {})
+
+    query = request.GET.get('q', saved_filters.get('q', ''))
+    status_filter = request.GET.get('status', saved_filters.get('status', ''))
+    payment_filter = request.GET.get('payment', saved_filters.get('payment', ''))
+    teacher_filter = request.GET.get('teacher', saved_filters.get('teacher', ''))
+    date_from = request.GET.get('date_from', saved_filters.get('date_from', ''))
+    date_to = request.GET.get('date_to', saved_filters.get('date_to', ''))
+    sort_by = request.GET.get('sort', saved_filters.get('sort', '-created_at'))
+
+    # Filter queryset based on active/archived state
+    applications = ClientApplication.objects.filter(is_archived=is_archived_scope)
     if query:
         applications = applications.filter(
             Q(first_name__icontains=query) |
@@ -633,21 +968,51 @@ def export_applications(request):
             Q(national_id__icontains=query) |
             Q(phone_number__icontains=query) |
             Q(email__icontains=query) |
-            Q(billing_number__icontains=query)
+            Q(billing_number__icontains=query) |
+            Q(district__icontains=query) |
+            Q(working_site__icontains=query) |
+            Q(teacher__name__icontains=query)
         )
     if status_filter:
         applications = applications.filter(status=status_filter)
     if payment_filter:
         applications = applications.filter(payment_status=payment_filter)
+    if teacher_filter == 'none':
+        applications = applications.filter(teacher__isnull=True)
+    elif teacher_filter:
+        applications = applications.filter(teacher_id=teacher_filter)
+    if date_from:
+        try:
+            applications = applications.filter(created_at__date__gte=date_from)
+        except Exception:
+            pass
+    if date_to:
+        try:
+            applications = applications.filter(created_at__date__lte=date_to)
+        except Exception:
+            pass
 
     applications = applications.order_by(sort_by)
 
-    # Determine status/payment label for the title & filename
+    # Determine status/payment/teacher/date label for the title & filename
     title_parts = []
     if status_filter:
         title_parts.append(status_filter.lower())
     if payment_filter:
         title_parts.append(payment_filter.lower())
+    if teacher_filter:
+        if teacher_filter == 'none':
+            title_parts.append("no_teacher")
+        else:
+            teacher_obj = Teacher.objects.filter(id=teacher_filter).first()
+            if teacher_obj:
+                title_parts.append(teacher_obj.name.lower().replace(" ", "_"))
+    if date_from and date_to:
+        title_parts.append(f"{date_from.replace('-', '')}_to_{date_to.replace('-', '')}")
+    elif date_from:
+        title_parts.append(f"from_{date_from.replace('-', '')}")
+    elif date_to:
+        title_parts.append(f"until_{date_to.replace('-', '')}")
 
     if not title_parts:
         title_name = "all status"

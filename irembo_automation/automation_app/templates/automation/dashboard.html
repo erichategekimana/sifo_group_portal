@@ -41,6 +41,12 @@
                 <button onclick="openManageSession()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all cursor-pointer">
                     🔐 Manage Session
                 </button>
+                <a href="{% url 'manage_teachers' %}" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    🎓 Manage Teachers
+                </a>
+                <a href="{% url 'archived_dashboard' %}" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
+                    📦 Archived Box ({{ archived_count }})
+                </a>
                 <a href="{% url 'create_application' %}" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg transition-all">
                     ➕ Create New Application
                 </a>
@@ -119,6 +125,35 @@
                             {% endfor %}
                         </select>
                     </div>
+
+                    <!-- Teacher Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">From Teacher</label>
+                        <select name="teacher" class="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">All Teachers</option>
+                            <option value="none" {% if teacher_filter == 'none' %}selected{% endif %}>None (No Teacher)</option>
+                            {% for t in teachers %}
+                                <option value="{{ t.id }}" {% if teacher_filter == t.id|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Date Range Filters -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Created Date Range</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <span class="text-[10px] text-slate-400 block mb-1">From:</span>
+                                <input type="date" name="date_from" value="{{ date_from }}" 
+                                    class="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-2 py-1.5 rounded text-xs focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 block mb-1">To:</span>
+                                <input type="date" name="date_to" value="{{ date_to }}" 
+                                    class="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-2 py-1.5 rounded text-xs focus:outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- Sort -->
                     <div>
@@ -139,9 +174,17 @@
                         </button>
                     </div>
 
+                    {% if query or status_filter or payment_filter or teacher_filter or date_from or date_to %}
+                    <div class="pt-1 text-center">
+                        <a href="{% url 'dashboard' %}?reset=1" class="text-xs text-rose-400 hover:text-rose-300 underline font-medium">
+                            ✕ Clear All Filters
+                        </a>
+                    </div>
+                    {% endif %}
+
                     <!-- Export Button -->
                     <div class="pt-2">
-                        <a href="{% url 'export_applications' %}?q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" 
+                        <a href="{% url 'export_applications' %}?q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&teacher={{ teacher_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}" 
                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded transition-all text-sm shadow-lg inline-flex items-center justify-center gap-1.5 cursor-pointer">
                             📥 Export Excel (Filtered)
                         </a>
@@ -202,6 +245,9 @@
                 <button type="button" onclick="performAction('mark_unpaid')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     ✕ Mark Unpaid
                 </button>
+                <button type="button" onclick="performAction('archive')" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    📦 Archive Selected
+                </button>
                 <button type="button" onclick="performAction('delete')" class="bg-red-600 hover:bg-red-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     🗑 Delete Selected
                 </button>
@@ -217,6 +263,7 @@
                             <th class="p-4">Applicant Profile</th>
                             <th class="p-4">National ID / Phone</th>
                             <th class="p-4">Category</th>
+                            <th class="p-4">Teacher</th>
                             <th class="p-4">Engine Pipeline Status</th>
                             <th class="p-4">Payment</th>
                             <th class="p-4">Actions</th>
@@ -240,6 +287,15 @@
                             </td>
                             <td class="p-4 text-sm font-semibold text-amber-600 dark:text-amber-400">
                                 {{ app.provisional_number|default:app.category }}
+                            </td>
+                            <td class="p-4 text-xs font-medium">
+                                {% if app.teacher %}
+                                    <span class="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 font-semibold inline-block whitespace-nowrap">
+                                        🎓 {{ app.teacher.name }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-slate-400 font-normal">—</span>
+                                {% endif %}
                             </td>
                             <td class="p-4 font-semibold text-sm">
                                 <span data-app-id="{{ app.id }}" class="px-2.5 py-1 rounded-full text-xs font-medium 
@@ -302,25 +358,6 @@
                 </table>
             </div>
         </form>
-
-        <!-- Pagination -->
-        {% if page_obj.has_other_pages %}
-        <div class="mt-6 flex justify-center gap-2">
-            {% if page_obj.has_previous %}
-                <a href="?page=1&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-white dark:bg-slate-800 hover:bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded text-sm transition-all">First</a>
-                <a href="?page={{ page_obj.previous_page_number }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-white dark:bg-slate-800 hover:bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded text-sm transition-all">← Previous</a>
-            {% endif %}
-            
-            <span class="px-4 py-2 text-slate-500 dark:text-slate-400 text-sm">
-                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-            </span>
-            
-            {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-white dark:bg-slate-800 hover:bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded text-sm transition-all">Next →</a>
-                <a href="?page={{ page_obj.paginator.num_pages }}&q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&sort={{ sort_by }}" class="bg-white dark:bg-slate-800 hover:bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded text-sm transition-all">Last</a>
-            {% endif %}
-        </div>
-        {% endif %}
         </div>
     </main>
 

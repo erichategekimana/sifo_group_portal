@@ -31,10 +31,25 @@
                 <a href="{% url 'edit_application' app.id %}" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg transition-all">
                     ✎ Edit Applicant
                 </a>
+                {% if app.is_archived %}
+                <form method="post" action="{% url 'unarchive_application' app.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg transition-all">
+                        📥 Restore (Unarchive)
+                    </button>
+                </form>
+                {% else %}
+                <form method="post" action="{% url 'archive_application' app.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg transition-all">
+                        📦 Archive
+                    </button>
+                </form>
                 {% if app.status == 'PENDING' or app.status == 'FAILED' or app.status == 'CANCELED' %}
                 <a href="{% url 'start_automation' app.id %}" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg transition-all">
                     ▶ Run Engine
                 </a>
+                {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -76,6 +91,32 @@
                 <div>
                     <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Provisional Number</div>
                     <div class="font-medium text-slate-900 dark:text-slate-100 font-mono">{{ app.provisional_number|default:"N/A" }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Akarere (District)</div>
+                    <div class="font-medium text-emerald-600 dark:text-emerald-400 font-semibold">{{ app.district|default:"Kicukiro" }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Itariki (Exam Date)</div>
+                    <div class="font-medium text-slate-900 dark:text-slate-100">{{ app.exam_date|date:"M d, Y"|default:"Not specified" }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Igihe (Exam Time)</div>
+                    <div class="font-medium text-slate-900 dark:text-slate-100">{{ app.exam_time|default:"Not specified" }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Aho ikizamini kizabera (Site)</div>
+                    <div class="font-medium text-slate-900 dark:text-slate-100">{{ app.working_site|default:"Standard District Site" }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">From Teacher</div>
+                    <div class="font-medium text-emerald-600 dark:text-emerald-400">
+                        {% if app.teacher %}
+                            🎓 {{ app.teacher.name }} {% if app.teacher.phone_number %}<span class="text-xs text-slate-400 font-mono">({{ app.teacher.phone_number }})</span>{% endif %}
+                        {% else %}
+                            <span class="text-slate-400 font-normal">None</span>
+                        {% endif %}
+                    </div>
                 </div>
                 <div>
                     <div class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold mb-1">Created At</div>

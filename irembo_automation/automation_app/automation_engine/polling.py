@@ -89,6 +89,52 @@ class PollingMixin:
         time.sleep(1)
         return True
 
+    def verify_before_next(self):
+        """
+        Double-check category and district dropdowns before clicking Next.
+        """
+        import re
+        if not self.booking_record:
+            return True
+            
+        target_cat = self.booking_record.category
+        
+        # 1. Get category control name
+        category_control = "categoryFormControl"
+        if not self.page.locator(f'ng-select[formcontrolname="{category_control}"]').is_visible():
+            category_control = "licenseCategoryFormControl"
+            
+        selected_cat = self._get_ng_select_selected_value(category_control)
+        
+        # 2. Get district control name
+        district_control = "locationFormControl"
+        if not self.page.locator(f'ng-select[formcontrolname="{district_control}"]').is_visible():
+            district_control = "districtFormControl"
+            
+        selected_dist = self._get_ng_select_selected_value(district_control)
+        
+        self.log_message(f"[Slot Selection Verification] Category: '{selected_cat}' (Expected: '{target_cat}'), District: '{selected_dist}' (Expected: 'Kicukiro')")
+        
+        # Validate Category
+        if selected_cat and target_cat:
+            target_cat_upper = target_cat.strip().upper()
+            target_is_at = "AT" in target_cat_upper or "AUTOMATIQUE" in target_cat_upper
+            clean_target = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', target_cat_upper, flags=re.IGNORECASE).strip()
+            clean_target_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_target, flags=re.IGNORECASE).strip()
+            
+            selected_cat_upper = selected_cat.upper()
+            sel_is_at = "AT" in selected_cat_upper or "AUTOMATIQUE" in selected_cat_upper
+            
+            if clean_target_code not in selected_cat_upper or sel_is_at != target_is_at:
+                return False
+                
+        # Validate District
+        if selected_dist:
+            if "KICUKIRO" not in selected_dist.upper():
+                return False
+                
+        return True
+
     def evaluate_and_select_slot(self, target_center="BUSANZA"):
         badge_element = self.page.locator('.appointments-header h2.title span.badge')
         if not badge_element.is_visible():
@@ -117,8 +163,42 @@ class PollingMixin:
                 time.sleep(0.5)
 
                 if "selected" in (slot.get_attribute("class") or "") or slot.locator(".selected-text").is_visible():
-                    self.page.locator("#next_btn").click()
-                    return True
+                    # Double check category/district selection before proceeding
+                    verified = False
+                    for attempt in range(1, 4):
+                        if self.verify_before_next():
+                            verified = True
+                            break
+                        
+                        self.log_message(f"[Slot Selection] Verification attempt {attempt}/3 failed. Re-selecting category and district...", level="WARNING")
+                        
+                        # Re-select category
+                        if self.booking_record and self.booking_record.category:
+                            category_control = "categoryFormControl"
+                            if not self.page.locator(f'ng-select[formcontrolname="{category_control}"]').is_visible():
+                                category_control = "licenseCategoryFormControl"
+                            try:
+                                self.select_category_dropdown(category_control, self.booking_record.category)
+                            except Exception as ce:
+                                self.log_message(f"[Slot Selection Retry] Failed to set category: {ce}", level="WARNING")
+                                
+                        # Re-select district
+                        district_control = "locationFormControl"
+                        if not self.page.locator(f'ng-select[formcontrolname="{district_control}"]').is_visible():
+                            district_control = "districtFormControl"
+                        try:
+                            self.set_angular_dropdown(district_control, "Kicukiro")
+                        except Exception as de:
+                            self.log_message(f"[Slot Selection Retry] Failed to set district: {de}", level="WARNING")
+                            
+                        # Wait a bit after re-selecting
+                        time.sleep(1.0)
+                        
+                    if verified:
+                        self.page.locator("#next_btn").click()
+                        return True
+                    else:
+                        self.log_message("[Slot Selection Match] Category/District selection verification failed after 3 attempts. Skipping slot.", level="ERROR")
         return False
 
     def start_slot_polling(self, target_center="BUSANZA AUTOMATED CENTER"):
