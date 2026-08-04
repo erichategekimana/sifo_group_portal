@@ -110,7 +110,7 @@ class UtilsMixin:
         print(f"[Engine] {full_msg}")
         
         record = self.booking_record
-        if record:
+        if record and not getattr(self, 'is_slot_checker', False):
             from django.utils import timezone
             from automation_app.models import ClientApplication
             def _append_log():
@@ -129,7 +129,7 @@ class UtilsMixin:
 
     def _pause_on_error(self, reason):
         print(f"[Engine PAUSED] {reason}")
-        if self.booking_record:
+        if self.booking_record and not getattr(self, 'is_slot_checker', False):
             self.booking_record.application_number = f"[ERROR] {reason}"
             self.update_database_state("FAILED")
         raise ValueError(reason)
@@ -141,7 +141,7 @@ class UtilsMixin:
         internal asyncio loop and raise SynchronousOnlyOperation.
         """
         record = self.booking_record
-        if record:
+        if record and not getattr(self, 'is_slot_checker', False):
             def _save():
                 record.status = new_status
                 record.save(update_fields=["status"])

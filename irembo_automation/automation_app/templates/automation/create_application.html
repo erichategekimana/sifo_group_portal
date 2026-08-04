@@ -102,7 +102,11 @@
                                 Aho ikizamini kizabera (Working Site)
                                 <span id="siteBadge" class="text-xs text-amber-400 font-normal ml-1">(Kicukiro site selection)</span>
                             </label>
-                            <input type="text" name="working_site" id="workingSiteInput" placeholder="e.g. Busanza Automated Center" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                            <select name="working_site" id="workingSiteInput" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                                <option value="">Select Working Site</option>
+                                <option value="BUSANZA AUTOMATED CENTER" selected>BUSANZA AUTOMATED CENTER</option>
+                                <option value="KICUKIRO - BUSANZA SITE (KIC)">KICUKIRO - BUSANZA SITE (KIC)</option>
+                            </select>
                         </div>
                         <div class="col-span-2">
                             <label class="block text-sm font-medium text-slate-300 mb-2">From Teacher</label>
@@ -125,14 +129,12 @@
                             siteInput.disabled = false;
                             siteInput.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-800');
                             siteInput.classList.add('bg-slate-700');
-                            siteInput.placeholder = "e.g. Busanza Automated Center";
                             siteBadge.style.display = "inline";
                         } else {
                             siteInput.disabled = true;
                             siteInput.value = "";
                             siteInput.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-800');
                             siteInput.classList.remove('bg-slate-700');
-                            siteInput.placeholder = "Disabled (Only available for Kicukiro)";
                             siteBadge.style.display = "none";
                         }
                     }

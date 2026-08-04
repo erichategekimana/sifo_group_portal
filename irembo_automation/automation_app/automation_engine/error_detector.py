@@ -89,15 +89,16 @@ class ErrorDetectionMixin:
         found, reason, raw = self._scan_for_errors()
         if found and self.booking_record:
             print(f"[ErrorDetector] Error detected: {reason} - {raw}")
-            # Store reason in failure_reason, full string in last_error, and append banner to log_output
-            record = self.booking_record
-            def _update():
-                record.failure_reason = reason
-                record.last_error = raw
-                error_banner = f"\n=== [IKOSA RYABONETSE / ERROR DETECTED] ===\nReason Code: {reason}\nMessage: {raw}\n============================================\n"
-                record.log_output = (record.log_output or "") + error_banner
-                record.status = 'FAILED'
-                record.save(update_fields=["failure_reason", "last_error", "log_output", "status"])
-            run_in_db_thread(_update)
+            if not getattr(self, 'is_slot_checker', False):
+                # Store reason in failure_reason, full string in last_error, and append banner to log_output
+                record = self.booking_record
+                def _update():
+                    record.failure_reason = reason
+                    record.last_error = raw
+                    error_banner = f"\n=== [IKOSA RYABONETSE / ERROR DETECTED] ===\nReason Code: {reason}\nMessage: {raw}\n============================================\n"
+                    record.log_output = (record.log_output or "") + error_banner
+                    record.status = 'FAILED'
+                    record.save(update_fields=["failure_reason", "last_error", "log_output", "status"])
+                run_in_db_thread(_update)
             raise ValueError(f"Irembo Error: {reason} - {raw}")
         return found

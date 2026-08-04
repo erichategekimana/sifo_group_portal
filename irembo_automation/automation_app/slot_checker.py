@@ -160,6 +160,9 @@ def _slot_checker_loop():
 
     print("[Cat A Slot Checker] Background monitoring loop started.")
     
+    last_candidate_id = None
+    recently_failed_ids = set()
+
     while slot_checker_state["is_running"]:
         # If slots are already found and alarm is ringing, check 30s timeout
         if slot_checker_state["slots_found"]:
@@ -197,6 +200,8 @@ def _slot_checker_loop():
             slot_checker_state["status"] = "Waiting: No Category A applications with provisional numbers found in DB."
             slot_checker_state["current_app_name"] = None
             slot_checker_state["current_app_id"] = None
+            recently_failed_ids.clear()
+            last_candidate_id = None
             
             # Sleep 60 seconds before checking DB again
             for _ in range(30):
@@ -205,8 +210,21 @@ def _slot_checker_loop():
                 time.sleep(2)
             continue
 
-        # Step 2: Pick one candidate randomly
-        app = random.choice(candidates)
+        # Step 2: Pick candidate using Round-Robin rotation with error exclusion
+        eligible_candidates = [c for c in candidates if c.id not in recently_failed_ids]
+        if not eligible_candidates:
+            # If all candidates failed recently, reset the failed set to retry the pool
+            recently_failed_ids.clear()
+            eligible_candidates = candidates
+
+        # Filter out the last used candidate if alternatives exist to guarantee rotation
+        different_candidates = [c for c in eligible_candidates if c.id != last_candidate_id]
+        if different_candidates:
+            app = different_candidates[0]
+        else:
+            app = eligible_candidates[0]
+
+        last_candidate_id = app.id
         slot_checker_state["current_app_name"] = f"{app.first_name} {app.last_name}"
         slot_checker_state["current_app_id"] = app.id
         slot_checker_state["status"] = f"Checking slots using {app.first_name} {app.last_name} ({app.national_id})..."
@@ -217,7 +235,9 @@ def _slot_checker_loop():
 
         try:
             with sync_playwright() as p:
-                engine = IremboAutomationEngine(booking_record=app)
+                # Pass booking_record=app & is_slot_checker=True so identity & navigation read fields natively while DB write operations are 100% blocked
+                engine = IremboAutomationEngine(booking_record=app, is_slot_checker=True)
+
                 # HEADLESS = TRUE for 100% invisible background running
                 engine.initialize_stealth_browser(p, headless=True)
                 
@@ -299,6 +319,8 @@ def _slot_checker_loop():
         except Exception as e:
             err_msg = str(e)
             print(f"[Cat A Slot Checker Warning] Attempt with applicant {app.national_id} failed: {err_msg}")
+            # Track failed candidate ID so slot_checker immediately switches to another applicant on retry
+            recently_failed_ids.add(app.id)
             slot_checker_state["status"] = f"Portal issue with {app.first_name}: {err_msg[:40]}... Retrying with another applicant."
             # Wait 15s before retrying with another applicant
             for _ in range(15):

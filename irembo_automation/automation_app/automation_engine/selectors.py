@@ -313,7 +313,7 @@ class SelectorsMixin:
         error_msg = f"Icyiciro cya perimi mwasabye ({target_category}) ntikibonetse mu byiciro bihari ({', '.join(all_option_texts)})"
         print(f"[Category Selection Error] {error_msg}")
         
-        if getattr(self, 'booking_record', None):
+        if getattr(self, 'booking_record', None) and not getattr(self, 'is_slot_checker', False):
             from .utils import run_in_db_thread
             record = self.booking_record
             def _record_error():

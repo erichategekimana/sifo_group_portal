@@ -22,7 +22,7 @@ class IremboAutomationEngine(
     ValidatorMixin,
     ErrorDetectionMixin
 ):
-    def __init__(self, booking_record=None):
+    def __init__(self, booking_record=None, is_slot_checker=False):
         self.user_data_dir = None
         from .config import USER_DATA_DIR_PATH
         self.user_data_dir = USER_DATA_DIR_PATH
@@ -30,3 +30,4 @@ class IremboAutomationEngine(
         self.context = None
         self.page = None
         self.booking_record = booking_record
+        self.is_slot_checker = is_slot_checker
