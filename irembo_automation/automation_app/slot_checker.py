@@ -68,9 +68,10 @@ def acknowledge_slot_alert():
             slot_checker_state["status"] = "Alert acknowledged. Resuming slot checks soon..."
         return True, "Alert acknowledged."
 
-def _check_slots_on_page(engine):
+def _check_slots_on_page(engine, target_center="BUSANZA AUTOMATED CENTER"):
     """
-    Checks the current page in the Irembo booking step to see if any valid slots are available.
+    Checks the current page in the Irembo booking step to see if valid slots are available
+    specifically for BUSANZA AUTOMATED CENTER. Excludes manual site KICUKIRO - BUSANZA SITE (KIC).
     Returns (bool, str): (True if slots found, details string).
     """
     badge_element = engine.page.locator('.appointments-header h2.title span.badge')
@@ -85,13 +86,17 @@ def _check_slots_on_page(engine):
                         cap_text = slot.locator(".capacity-circle").inner_text().strip()
                         try:
                             cap = int(cap_text)
-                            if cap > 0:
+                            center_upper = center_text.upper()
+                            # Require AUTOMATED / AUTOMATIQUE in center name, and ignore manual KICUKIRO - BUSANZA SITE (KIC)
+                            is_automated = "AUTOMATED" in center_upper or "AUTOMATIQUE" in center_upper
+                            is_manual_site = "SITE (KIC)" in center_upper or "BUSANZA SITE" in center_upper
+                            
+                            if cap > 0 and is_automated and not is_manual_site:
                                 return True, f"{center_text} ({cap} seats)"
                         except ValueError:
                             pass
-                return True, f"Available slots badge showing {count} seat(s)"
         except ValueError:
-            pass
+                            pass
     return False, ""
 
 def _auto_launch_cat_a_batch():

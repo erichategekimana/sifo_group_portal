@@ -126,18 +126,27 @@ class SelectorsMixin:
                     matched = True
                     break
 
-        # Final fallback: click the first option if nothing matched
-        if not matched and count > 0:
-            options.first.click()
+        if matched:
+            time.sleep(0.3)
+            # Instant DOM check: verify selected value in ng-select container matches target option
+            try:
+                container = dropdown.locator('.ng-value-container, .ng-value-label').first
+                if container.is_visible():
+                    val_text = container.inner_text().strip()
+                    if val_text and option_text.lower() in val_text.lower():
+                        return True
+            except Exception:
+                pass
+            return True
 
-        time.sleep(1)
+        raise ValueError(f"Option '{option_text}' not found in dropdown '{control_name}'.")
 
     def select_category_dropdown(self, control_name, target_category):
         target_upper = target_category.strip().upper()
         target_is_at = "AT" in target_upper or "AUTOMATIQUE" in target_upper
 
         # Clean target code (e.g. if target is "Urwego D" or "D(AT)", extract "D")
-        clean_target = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', target_upper, flags=re.IGNORECASE).strip()
+        clean_target = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA|ICYICIRO)\s*', '', target_upper, flags=re.IGNORECASE).strip()
         clean_target_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_target, flags=re.IGNORECASE).strip()
         if not clean_target_code:
             clean_target_code = target_upper
@@ -226,7 +235,7 @@ class SelectorsMixin:
                     if not target_is_at and opt_is_at:
                         continue
 
-                    clean_opt = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', text_upper, flags=re.IGNORECASE).strip()
+                    clean_opt = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA|ICYICIRO)\s*', '', text_upper, flags=re.IGNORECASE).strip()
                     clean_opt_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_opt, flags=re.IGNORECASE).strip()
                     
                     if clean_opt_code == clean_target_code and clean_opt_code != "":
@@ -251,7 +260,7 @@ class SelectorsMixin:
                         matched_option = opt
                         break
 
-            # Tier 4: Substring fallback (ONLY after strict AT filtering and when clean_target_code is at least 1 char)
+            # Tier 4: Exact token match after preamble removal (Strict to prevent 'A' matching 'URWEGO C')
             if matched_option is None and len(clean_target_code) >= 1:
                 for i in range(count):
                     opt = options.nth(i)
@@ -263,7 +272,10 @@ class SelectorsMixin:
                     if not target_is_at and opt_is_at:
                         continue
 
-                    if clean_target_code in text_upper:
+                    clean_opt = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA|ICYICIRO)\s*', '', text_upper, flags=re.IGNORECASE).strip()
+                    clean_opt_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_opt, flags=re.IGNORECASE).strip()
+
+                    if clean_opt_code == clean_target_code or re.search(r'\b' + re.escape(clean_target_code) + r'\b', clean_opt):
                         matched_option = opt
                         break
 
@@ -271,7 +283,22 @@ class SelectorsMixin:
                 matched_text = matched_option.inner_text().strip()
                 print(f"[Category Selection] Matched option '{matched_text}' on attempt {attempt}. Clicking...")
                 matched_option.click()
-                time.sleep(1)
+                time.sleep(0.3)
+
+                # Fast DOM verification check
+                try:
+                    val_container = dropdown.locator('.ng-value-container, .ng-value-label').first
+                    if val_container.is_visible():
+                        sel_val = val_container.inner_text().strip().upper()
+                        if sel_val:
+                            sel_is_at = "AT" in sel_val or "AUTOMATIQUE" in sel_val
+                            if clean_target_code in sel_val and sel_is_at == target_is_at:
+                                return True
+                            else:
+                                print(f"[Category Selection Warning] Click registered but selected value '{sel_val}' mismatch target '{target_category}'. Retrying...")
+                                continue
+                except Exception:
+                    pass
                 return True
 
             print(f"[Category Selection] Attempt {attempt}: Category '{target_category}' not found in current options: {current_texts}. Retrying as fallback...")
