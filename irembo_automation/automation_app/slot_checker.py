@@ -4,7 +4,7 @@ import random
 import re
 from django.utils import timezone
 from playwright.sync_api import sync_playwright
-from .automation_engine.utils import run_in_db_thread, is_exact_target_center
+from .automation_engine.utils import run_in_db_thread
 
 try:
     import winsound
@@ -70,20 +70,9 @@ def acknowledge_slot_alert():
 
 def _check_slots_on_page(engine):
     """
-    Checks the current page in the Irembo booking step to see if any valid BUSANZA AUTOMATED CENTER slots are available.
-    Returns (bool, str): (True if valid target slots found, details string).
+    Checks the current page in the Irembo booking step to see if any valid slots are available.
+    Returns (bool, str): (True if slots found, details string).
     """
-    # 1. Verify District selection is Kicukiro
-    district_control = "locationFormControl"
-    if not engine.page.locator(f'ng-select[formcontrolname="{district_control}"]').is_visible():
-        district_control = "districtFormControl"
-        
-    selected_dist = engine._get_ng_select_selected_value(district_control)
-    if not selected_dist or "KICUKIRO" not in selected_dist.upper():
-        print(f"[Cat A Slot Checker Warning] District verification failed! Expected 'Kicukiro', got '{selected_dist}'.")
-        return False, ""
-
-    # 2. Check slots list for BUSANZA AUTOMATED CENTER
     badge_element = engine.page.locator('.appointments-header h2.title span.badge')
     if badge_element.is_visible():
         try:
@@ -94,17 +83,13 @@ def _check_slots_on_page(engine):
                     if "dimmed" not in (slot.get_attribute("class") or ""):
                         center_text = slot.locator(".center").inner_text().strip()
                         cap_text = slot.locator(".capacity-circle").inner_text().strip()
-                        
-                        # Strict matching: MUST be BUSANZA AUTOMATED CENTER (and NOT KICUKIRO - BUSANZA SITE, etc.)
-                        if is_exact_target_center(center_text, "BUSANZA AUTOMATED CENTER"):
-                            try:
-                                cap = int(cap_text)
-                                if cap > 0:
-                                    return True, f"{center_text} ({cap} seats)"
-                            except ValueError:
-                                pass
-                        else:
-                            print(f"[Cat A Slot Checker] Ignoring non-target center slot: '{center_text}'")
+                        try:
+                            cap = int(cap_text)
+                            if cap > 0:
+                                return True, f"{center_text} ({cap} seats)"
+                        except ValueError:
+                            pass
+                return True, f"Available slots badge showing {count} seat(s)"
         except ValueError:
             pass
     return False, ""
