@@ -54,27 +54,37 @@ class SelectorsMixin:
 
         print(f"[Dropdown] Clicking dropdown matching {control_name} to select option: {option_text}")
         
-        # Robust click loop for the dropdown to ensure panel opens
+        # Robust panel check: don't click if panel is already open
         panel_opened = False
-        for attempt in range(3):
-            try:
-                dropdown.click(force=True, timeout=5000)
-                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
-                panel_opened = True
-                break
-            except Exception as e:
-                print(f"[Dropdown] Attempt {attempt+1} failed to open panel for {control_name}. Retrying...")
-                time.sleep(1.5)
+        if self.page.locator('.ng-dropdown-panel').is_visible():
+            panel_opened = True
+        else:
+            for attempt in range(3):
+                try:
+                    dropdown.click(force=True, timeout=5000)
+                    self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                    panel_opened = True
+                    break
+                except Exception as e:
+                    print(f"[Dropdown] Attempt {attempt+1} failed to open panel for {control_name}. Retrying...")
+                    time.sleep(1.5)
                 
         if not panel_opened:
             raise ValueError(f"Failed to open dropdown panel for '{control_name}' after 3 attempts.")
 
-        # Now get all options – but wait for the first one to be visible (fixes strict mode)
+        # Now get all options – wait up to 6s for async Angular render
         options = self.page.locator('.ng-dropdown-panel .ng-option')
-        options.first.wait_for(state="visible", timeout=3000)
+        try:
+            options.first.wait_for(state="visible", timeout=6000)
+        except Exception:
+            pass
+
+        count = options.count()
+        if count == 0:
+            time.sleep(1.0)
+            count = options.count()
 
         matched = False
-        count = options.count()
 
         # Tier 1: Exact match (case-sensitive)
         for i in range(count):
@@ -171,34 +181,43 @@ class SelectorsMixin:
                 time.sleep(1.5)
                 continue
 
-            # Ensure dropdown panel is open
+            # Robust panel check: don't click if panel is already open
             panel_opened = False
-            for click_attempt in range(3):
-                try:
-                    dropdown.click(force=True, timeout=5000)
-                    self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=4000)
-                    panel_opened = True
-                    break
-                except Exception as e:
-                    print(f"[Category Selection] Click attempt {click_attempt+1} failed to open panel. Retrying...")
-                    time.sleep(1.0)
+            if self.page.locator('.ng-dropdown-panel').is_visible():
+                panel_opened = True
+            else:
+                for click_attempt in range(3):
+                    try:
+                        dropdown.click(force=True, timeout=5000)
+                        self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                        panel_opened = True
+                        break
+                    except Exception as e:
+                        print(f"[Category Selection] Click attempt {click_attempt+1} failed to open panel. Retrying...")
+                        time.sleep(1.0)
             
             if not panel_opened:
                 print(f"[Category Selection] Could not open dropdown panel on attempt {attempt}.")
                 time.sleep(1.5)
                 continue
 
-            # Give Angular a moment to render options inside .ng-dropdown-panel
-            time.sleep(0.5)
+            # Wait up to 6s for async Angular options render
             options = self.page.locator('.ng-dropdown-panel .ng-option')
             try:
-                options.first.wait_for(state="visible", timeout=3000)
+                options.first.wait_for(state="visible", timeout=6000)
             except Exception:
-                print(f"[Category Selection] Options did not become visible on attempt {attempt}.")
-                time.sleep(1.0)
-                continue
+                pass
 
             count = options.count()
+            if count == 0:
+                time.sleep(1.0)
+                count = options.count()
+
+            if count == 0:
+                print(f"[Category Selection] 0 options visible inside panel on attempt {attempt}. Retrying...")
+                time.sleep(1.5)
+                continue
+
             current_texts = []
             matched_option = None
 
@@ -260,7 +279,7 @@ class SelectorsMixin:
                         matched_option = opt
                         break
 
-            # Tier 4: Exact token match after preamble removal (Strict to prevent 'A' matching 'URWEGO C')
+            # Tier 4: Exact token match after preamble removal
             if matched_option is None and len(clean_target_code) >= 1:
                 for i in range(count):
                     opt = options.nth(i)
@@ -276,6 +295,22 @@ class SelectorsMixin:
                     clean_opt_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_opt, flags=re.IGNORECASE).strip()
 
                     if clean_opt_code == clean_target_code or re.search(r'\b' + re.escape(clean_target_code) + r'\b', clean_opt):
+                        matched_option = opt
+                        break
+
+            # Tier 5: Substring containment fallback (case-insensitive)
+            if matched_option is None:
+                for i in range(count):
+                    opt = options.nth(i)
+                    text_upper = opt.inner_text().strip().upper()
+                    opt_is_at = "AT" in text_upper or "AUTOMATIQUE" in text_upper
+
+                    if target_is_at and not opt_is_at:
+                        continue
+                    if not target_is_at and opt_is_at:
+                        continue
+
+                    if clean_target_code in text_upper:
                         matched_option = opt
                         break
 
