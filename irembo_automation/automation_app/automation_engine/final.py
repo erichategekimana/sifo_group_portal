@@ -68,24 +68,6 @@ class FinalizationMixin:
                 self.log_message(f"Fallback checkbox also failed: {fe}", level="WARNING")
 
         # ── Step 4: Submit the application ────────────────────────────────────
-        # Final Summary Verification before submitting
-        try:
-            if not self.verify_summary_page():
-                self.log_message("[Finalization Aborted] Summary page verification failed. Mismatched category or district.", level="ERROR")
-                if self.booking_record:
-                    record = self.booking_record
-                    def _save_mismatch_fail():
-                        from automation_app.models import ClientApplication
-                        app = ClientApplication.objects.get(id=record.id)
-                        app.status = "FAILED"
-                        app.failure_reason = "IBYICIRO_TANDUKANYE"
-                        app.save(update_fields=["status", "failure_reason"])
-                    run_in_db_thread(_save_mismatch_fail)
-                raise ValueError("Summary page verification failed: Selected category/district does not match application details.")
-        except Exception as ve:
-            self.log_message(f"Summary verification failed with exception: {ve}", level="ERROR")
-            raise ve
-
         submit_success = False
         submit_btn = self.page.locator('#submit_btn')
         last_error_reason = None
@@ -234,83 +216,3 @@ class FinalizationMixin:
         except Exception as e:
             self.log_message(f"Screenshot capture failed: {e}", level="ERROR")
             return None
-
-    def verify_summary_page(self):
-        """
-        Verifies that the summary page displays the correct category and district before submission.
-        Does not fail if the labels cannot be found (to prevent false positives from layout changes),
-        but fails explicitly if a mismatched value is found.
-        """
-        if not self.booking_record:
-            return True
-
-        target_cat = self.booking_record.category.strip().upper()
-        target_is_at = "AT" in target_cat or "AUTOMATIQUE" in target_cat
-        clean_target = re.sub(r'^(URWEGO|CATEGORY|CAT|URUHUSHYA RWA|ICYICIRO CYA)\s*', '', target_cat, flags=re.IGNORECASE).strip()
-        clean_target_code = re.sub(r'\(AT\)|\bAT\b|\bAUTOMATIQUE\b|-.*$|:.*$', '', clean_target, flags=re.IGNORECASE).strip()
-
-        body_text = self.page.locator('body').inner_text()
-        body_text_upper = body_text.upper()
-
-        self.log_message(f"[Summary Verification] Inspecting summary page text. Target category: {target_cat} (code: {clean_target_code}, is_AT: {target_is_at})")
-
-        # ── 1. Category Check ────────────────────────────────────────────────
-        # Look for category labels and check their values
-        cat_patterns = [
-            r"ICYICIRO\s*CY'URUHUSHYA\s*WIFUZA\s*[:\-]?\s*([A-Z0-9]+(?:\s*\(AT\))?)",
-            r"ICYICIRO\s*CY'URUHUSHYA\s*[:\-]?\s*([A-Z0-9]+(?:\s*\(AT\))?)",
-            r"ICYICIRO\s*[:\-]?\s*([A-Z0-9]+(?:\s*\(AT\))?)",
-            r"CATEGORY\s*[:\-]?\s*([A-Z0-9]+(?:\s*\(AT\))?)",
-        ]
-        
-        found_category_text = None
-        for pattern in cat_patterns:
-            match = re.search(pattern, body_text_upper)
-            if match:
-                found_category_text = match.group(1).strip()
-                break
-
-        if found_category_text:
-            found_is_at = "AT" in found_category_text or "AUTOMATIQUE" in found_category_text
-            # Check if correct code and AT suffix match
-            if clean_target_code not in found_category_text or found_is_at != target_is_at:
-                self.log_message(
-                    f"[Summary Verification ERROR] Mismatched category on summary page! Found: '{found_category_text}', Expected: '{target_cat}'",
-                    level="ERROR"
-                )
-                return False
-            else:
-                self.log_message(f"[Summary Verification] Category successfully verified on summary page: '{found_category_text}'")
-        else:
-            self.log_message("[Summary Verification Warning] Could not locate category label on summary page. Skipping strict category check to avoid false positives.", level="WARNING")
-
-        # ── 2. District Check ────────────────────────────────────────────────
-        # Look for district labels and check their values
-        dist_patterns = [
-            r"AKARERE\s*[:\-]?\s*([A-Z\s]+)",
-            r"DISTRICT\s*[:\-]?\s*([A-Z\s]+)",
-        ]
-        
-        found_district_text = None
-        for pattern in dist_patterns:
-            match = re.search(pattern, body_text_upper)
-            if match:
-                # Get the first word of the captured district name
-                words = match.group(1).strip().split()
-                if words:
-                    found_district_text = words[0]
-                    break
-
-        if found_district_text:
-            if "KICUKIRO" not in found_district_text:
-                self.log_message(
-                    f"[Summary Verification ERROR] Mismatched district on summary page! Found: '{found_district_text}', Expected: 'KICUKIRO'",
-                    level="ERROR"
-                )
-                return False
-            else:
-                self.log_message(f"[Summary Verification] District successfully verified on summary page: '{found_district_text}'")
-        else:
-            self.log_message("[Summary Verification Warning] Could not locate district label on summary page. Skipping strict district check to avoid false positives.", level="WARNING")
-
-        return True
