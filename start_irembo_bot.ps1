@@ -63,13 +63,22 @@ if ($pg) {
     } else { Log "PostgreSQL already running" }
 } else { Log "PostgreSQL service $PostgresServiceName not present; skip" }
 
-# Start Django using venv python via Start-Process so NSSM can supervise this script if invoked
+# Ensure Administrator Elevation for Interactive Session 1 (GUI Display Support)
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "Re-launching script with Administrator privileges..." -ForegroundColor Yellow
+    $scriptPath = $MyInvocation.MyCommand.Path
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`"" -Verb RunAs
+    exit
+}
+
+# Start Django using venv python in Interactive Session 1 (WindowStyle Normal for GUI Chrome threads)
 Write-Host "Starting Django on 0.0.0.0:$Port using $PythonExe"
 Log "Starting Django on 0.0.0.0:$Port using $PythonExe"
 
 $args = "`"$ManagePy`" runserver --noreload 0.0.0.0:$Port"
 try {
-    $proc = Start-Process -FilePath $PythonExe -ArgumentList $args -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $ErrFile -PassThru
+    $proc = Start-Process -FilePath $PythonExe -ArgumentList $args -WorkingDirectory $ProjectRoot -WindowStyle Normal -RedirectStandardOutput $LogFile -RedirectStandardError $ErrFile -PassThru
     Log "Django process started, PID=$($proc.Id)"
     # Wait a short while and check if process is still running
     Start-Sleep -Seconds 2
@@ -78,11 +87,10 @@ try {
         Write-Error "Django process failed to start. See $LogFile"
         exit 1
     }
-    # For service usage we do not wait on the process; NSSM will keep the session
 } catch {
     Log "ERROR - Failed to start Django: $_"
     Write-Error "Failed to start Django: $_"
     exit 1
 }
 
-Log "start_irembo_bot.ps1 finished (Django launched)."
+Log "start_irembo_bot.ps1 finished (Django launched elevated)."
