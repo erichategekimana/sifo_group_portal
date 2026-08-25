@@ -74,7 +74,7 @@ class AbortTaskException(Exception):
 # Shared thread pool for all Django ORM calls made from inside Playwright threads.
 # These worker threads have no running event loop, so Django's ORM guard passes.
 _DB_THREAD_POOL = concurrent.futures.ThreadPoolExecutor(
-    max_workers=4,
+    max_workers=80,
     thread_name_prefix="irembo-db",
 )
 

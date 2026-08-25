@@ -20,7 +20,13 @@ class BrowserMixin:
         print("[Engine] Launching ephemeral Chrome profile for worker...")
         self.browser = p.chromium.launch(
             headless=headless,
-            args=["--disable-blink-features=AutomationControlled"]
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-features=CalculateNativeWinOcclusion",
+            ]
         )
         
         state_kwargs = {}
