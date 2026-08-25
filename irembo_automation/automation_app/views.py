@@ -681,6 +681,16 @@ def bulk_action(request):
                 )
         messages.success(request, f'Started automation for {count} applications')
     
+    elif action == 'export_excel':
+        count = apps.count()
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Exported {count} selected application(s) to Excel",
+            application_name="Multiple Applications",
+            application_id=None
+        )
+        return _generate_excel_response(apps, title_name="selected_applications")
+    
     elif action == 'archive':
         count = apps.count()
         apps.update(is_archived=True)
@@ -933,12 +943,83 @@ def api_ack_slot_alert(request):
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 
-def export_applications(request):
-    """Generates a Microsoft Excel (.xlsx) document for the filtered applications."""
+def _generate_excel_response(applications, title_name="applications"):
+    """Helper to generate a styled Microsoft Excel (.xlsx) document for given applications."""
     import io
     import openpyxl
     from django.http import HttpResponse
     from django.utils import timezone
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    now = timezone.now()
+    timestamp_suffix = now.strftime("%Y%m%d_%H%M%S")
+    timestamp_display = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Create Excel Workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Applications"
+
+    # Row 1: Title with timestamp (e.g. "Selected applications - 2026-07-23 09:23:35")
+    title_text = f"{title_name.replace('_', ' ').capitalize()} - {timestamp_display}"
+    ws.append([title_text])
+    ws.merge_cells('A1:B1')
+
+    # Row 2: One free/empty row between title and contents
+    ws.append([])
+
+    # Row 3: Headers (Name, Number) capitalized and bold
+    ws.append(["Name", "Number"])
+
+    # Row 4+: Data (Name, Number)
+    for app in applications:
+        full_name = f"{app.first_name} {app.last_name}"
+        ws.append([full_name, app.phone_number])
+
+    # Styling and Layout adjustments
+    # Style Row 1 (Title): size 20pt, bold, centered
+    ws['A1'].font = Font(size=20, bold=True)
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 35
+
+    # Style Row 3 (Headers): bold, vertical alignment
+    header_font = Font(bold=True)
+    ws['A3'].font = header_font
+    ws['B3'].font = header_font
+    ws['A3'].alignment = Alignment(vertical='center')
+    ws['B3'].alignment = Alignment(vertical='center')
+    ws.row_dimensions[3].height = 20
+
+    # Auto-adjust column widths based on cell content (excluding title row)
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            # Skip title row (row 1) to avoid merged cell width distortion
+            if cell.row == 1:
+                continue
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+    # Save workbook to memory
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    # Return Excel response
+    filename = f"{title_name}_{timestamp_suffix}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+def export_applications(request):
+    """Generates a Microsoft Excel (.xlsx) document for the filtered applications."""
     from django.db.models import Q
     from .models import ClientApplication
 
@@ -1019,71 +1100,5 @@ def export_applications(request):
     else:
         title_name = "_".join(title_parts)
 
-    now = timezone.now()
-    timestamp_suffix = now.strftime("%Y%m%d_%H%M%S")
-    timestamp_display = now.strftime("%Y-%m-%d %H:%M:%S")
-
-    # Create Excel Workbook
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Applications"
-
-    # Row 1: Title with timestamp (e.g. "Unpaid - 2026-07-23 09:23:35")
-    title_text = f"{title_name.replace('_', ' ').capitalize()} - {timestamp_display}"
-    ws.append([title_text])
-    ws.merge_cells('A1:B1')
-
-    # Row 2: One free/empty row between title and contents
-    ws.append([])
-
-    # Row 3: Headers (Name, Number) capitalized and bold
-    ws.append(["Name", "Number"])
-
-    # Row 4+: Data (Name, Number)
-    for app in applications:
-        full_name = f"{app.first_name} {app.last_name}"
-        ws.append([full_name, app.phone_number])
-
-    # Styling and Layout adjustments
-    from openpyxl.styles import Alignment, Font
-    from openpyxl.utils import get_column_letter
-
-    # Style Row 1 (Title): size 20pt, bold, centered
-    ws['A1'].font = Font(size=20, bold=True)
-    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[1].height = 35
-
-    # Style Row 3 (Headers): bold, vertical alignment
-    header_font = Font(bold=True)
-    ws['A3'].font = header_font
-    ws['B3'].font = header_font
-    ws['A3'].alignment = Alignment(vertical='center')
-    ws['B3'].alignment = Alignment(vertical='center')
-    ws.row_dimensions[3].height = 20
-
-    # Auto-adjust column widths based on cell content (excluding title row)
-    for col in ws.columns:
-        max_len = 0
-        col_letter = get_column_letter(col[0].column)
-        for cell in col:
-            # Skip title row (row 1) to avoid merged cell width distortion
-            if cell.row == 1:
-                continue
-            if cell.value:
-                max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-    # Save workbook to memory
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
-    # Return Excel response
-    filename = f"{title_name}_{timestamp_suffix}.xlsx"
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+    return _generate_excel_response(applications, title_name=title_name)
 

@@ -1,69 +1,12 @@
 # start_irembo_bot.ps1
-# Service-friendly startup script for Irembo Automation Bot (Windows)
+# Service startup script for Irembo Automation Bot (Windows 11)
 
 param(
     [string]$ProjectRoot = "C:\Program Files\irembo_bot",
     [int]$Port = 8000
 )
 
-# Paths
-$VenvPath = Join-Path $ProjectRoot "venv"
-$PythonExe = Join-Path $VenvPath "Scripts\python.exe"
-$ManagePy = Join-Path $ProjectRoot "irembo_automation\manage.py"
-$LogFile = Join-Path $ProjectRoot "logs\server.log"
-$ErrFile = Join-Path $ProjectRoot "logs\server_error.log"
-
-# Ensure log directory exists
-$LogDir = Split-Path $LogFile -Parent
-if (!(Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
-
-function Log($msg) { "$(Get-Date -Format o): $msg" | Out-File $LogFile -Append }
-function LogError($msg) { "$(Get-Date -Format o): $msg" | Out-File $ErrFile -Append }
-
-Log "Starting Irembo Bot service script. ProjectRoot=$ProjectRoot"
-
-# Validate manage.py
-if (!(Test-Path $ManagePy)) {
-    Write-Error "manage.py not found at $ManagePy. Verify ProjectRoot or file placement."
-    Log "ERROR - manage.py not found at $ManagePy"
-    exit 1
-}
-
-# Validate virtualenv python
-if (!(Test-Path $PythonExe)) {
-    # Try alternate common names
-    $alt = Join-Path $VenvPath "Scripts\python3.exe"
-    if (Test-Path $alt) { $PythonExe = $alt }
-}
-if (!(Test-Path $PythonExe)) {
-    Write-Error "Python executable not found at expected venv locations: $PythonExe"
-    Log "ERROR - Python executable not found under $VenvPath"
-    exit 1
-}
-
-# Detect if Django (manage.py) is already running
-$pythonProcesses = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -ErrorAction SilentlyContinue
-if ($pythonProcesses) {
-    $running = $pythonProcesses | Where-Object { $_.CommandLine -and $_.CommandLine -match 'manage.py' }
-    if ($running) {
-        $pids = ($running | ForEach-Object { $_.ProcessId }) -join ', '
-        Write-Host "Django already running (manage.py) pid(s): $pids"
-        Log "Django already running: PIDs=$pids - exiting start script."
-        exit 0
-    }
-}
-
-# (Optional) Start PostgreSQL service if present
-$PostgresServiceName = "postgresql-x64-15"
-$pg = Get-Service -Name $PostgresServiceName -ErrorAction SilentlyContinue
-if ($pg) {
-    if ($pg.Status -ne 'Running') {
-        Log "Starting PostgreSQL service $PostgresServiceName"
-        try { Start-Service -Name $PostgresServiceName -ErrorAction Stop; Start-Sleep -Seconds 3; Log "PostgreSQL started" } catch { Log "WARNING - PostgreSQL could not be started: $_" }
-    } else { Log "PostgreSQL already running" }
-} else { Log "PostgreSQL service $PostgresServiceName not present; skip" }
-
-# Ensure Administrator Elevation for Interactive Session 1 (GUI Display Support)
+# 1. Ensure Administrator Elevation
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
     Write-Host "Re-launching script with Administrator privileges..." -ForegroundColor Yellow
@@ -72,25 +15,59 @@ if (-not $isAdmin) {
     exit
 }
 
-# Start Django using venv python in Interactive Session 1 (WindowStyle Normal for GUI Chrome threads)
-Write-Host "Starting Django on 0.0.0.0:$Port using $PythonExe"
-Log "Starting Django on 0.0.0.0:$Port using $PythonExe"
-
-$args = "`"$ManagePy`" runserver --noreload 0.0.0.0:$Port"
-try {
-    $proc = Start-Process -FilePath $PythonExe -ArgumentList $args -WorkingDirectory $ProjectRoot -WindowStyle Normal -RedirectStandardOutput $LogFile -RedirectStandardError $ErrFile -PassThru
-    Log "Django process started, PID=$($proc.Id)"
-    # Wait a short while and check if process is still running
-    Start-Sleep -Seconds 2
-    if ($proc.HasExited) {
-        Log "ERROR - Django process exited quickly with code $($proc.ExitCode)"
-        Write-Error "Django process failed to start. See $LogFile"
-        exit 1
-    }
-} catch {
-    Log "ERROR - Failed to start Django: $_"
-    Write-Error "Failed to start Django: $_"
-    exit 1
+# 2. Paths Configuration
+$VenvPython = Join-Path $ProjectRoot "venv\Scripts\python.exe"
+if (!(Test-Path $VenvPython)) {
+    $alt = Join-Path $ProjectRoot "venv\Scripts\python3.exe"
+    if (Test-Path $alt) { $VenvPython = $alt }
 }
 
-Log "start_irembo_bot.ps1 finished (Django launched elevated)."
+$AutomationDir = Join-Path $ProjectRoot "irembo_automation"
+$ManagePy = Join-Path $AutomationDir "manage.py"
+$LogDir = Join-Path $ProjectRoot "logs"
+$LogFile = Join-Path $LogDir "server.log"
+$ErrFile = Join-Path $LogDir "server_error.log"
+
+if (!(Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+
+# 3. Start PostgreSQL Service if present
+$PostgresServiceName = "postgresql-x64-15"
+$pg = Get-Service -Name $PostgresServiceName -ErrorAction SilentlyContinue
+if ($pg -and $pg.Status -ne 'Running') {
+    Write-Host "Starting PostgreSQL service..." -ForegroundColor Cyan
+    try {
+        Start-Service -Name $PostgresServiceName -ErrorAction Stop
+        Start-Sleep -Seconds 2
+    } catch {
+        Write-Warning "Could not start PostgreSQL service automatically: $_"
+    }
+}
+
+# 4. Check if Django is already running
+$existing = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -match 'manage.py' }
+if ($existing) {
+    $pids = ($existing | ForEach-Object { $_.ProcessId }) -join ', '
+    Write-Host "Django already running (PID: $pids). Exiting start script." -ForegroundColor Green
+    exit 0
+}
+
+# 5. Move into irembo_automation directory so session_state.json and local files load natively
+Set-Location $AutomationDir
+
+# 6. Launch Django server with --noreload in the foreground interactive desktop session
+Write-Host "Starting Django server on port $Port inside $AutomationDir..." -ForegroundColor Green
+$args = "`"$ManagePy`" runserver --noreload 0.0.0.0:$Port"
+
+try {
+    $proc = Start-Process -FilePath $VenvPython -ArgumentList $args -WorkingDirectory $AutomationDir -WindowStyle Normal -RedirectStandardOutput $LogFile -RedirectStandardError $ErrFile -PassThru
+    Start-Sleep -Seconds 2
+    if ($proc.HasExited) {
+        Write-Error "Django server failed to start. Check logs at: $LogFile"
+        exit 1
+    }
+    Write-Host "Django server started successfully (PID: $($proc.Id))." -ForegroundColor Green
+} catch {
+    Write-Error "Failed to start Django process: $_"
+    exit 1
+}
