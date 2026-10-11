@@ -23,17 +23,39 @@ slot_checker_state = {
     "check_count": 0,
     "current_app_name": None,
     "current_app_id": None,
+    "batch_size": 10,
+    "use_priority": True,
+    "sort_by": "created_at",
 }
 
 _checker_thread = None
 _checker_lock = threading.Lock()
 
-def start_slot_checker():
+def start_slot_checker(batch_size=10, use_priority=True, sort_by="created_at"):
     global _checker_thread
     with _checker_lock:
         if slot_checker_state["is_running"]:
             return False, "Slot checker is already running."
         
+        # Defensive validation of batch_size
+        try:
+            batch_size = int(batch_size)
+            if batch_size < 1:
+                batch_size = 1
+            elif batch_size > 50:
+                batch_size = 50
+        except (ValueError, TypeError):
+            batch_size = 10
+
+        # Validate sort_by
+        valid_sorts = ["created_at", "-created_at", "teacher", "status", "first_name"]
+        if sort_by not in valid_sorts:
+            sort_by = "created_at"
+
+        slot_checker_state["batch_size"] = batch_size
+        slot_checker_state["use_priority"] = bool(use_priority)
+        slot_checker_state["sort_by"] = sort_by
+
         slot_checker_state["is_running"] = True
         slot_checker_state["status"] = "Starting Category A slot checker..."
         slot_checker_state["slots_found"] = False
@@ -236,18 +258,43 @@ def _auto_launch_cat_a_batch():
     from .views import run_automation_worker
     from .automation_engine.utils import grant_foreground_permission
 
-    print("[Cat A Auto-Launcher] Starting automatic batch execution for Category A applications...")
+    batch_size = slot_checker_state.get("batch_size", 10)
+    use_priority = slot_checker_state.get("use_priority", True)
+    sort_by = slot_checker_state.get("sort_by", "created_at")
+
+    print(f"[Cat A Auto-Launcher] Starting automatic batch execution (Batch size: {batch_size}, Priority Mode: {use_priority}, Sort: {sort_by})...")
     
     # Request Windows to allow child processes to show foreground windows
     grant_foreground_permission()
 
-    def _fetch_eligible():
-        return list(ClientApplication.objects.filter(
+    def _fetch_ordered_candidates():
+        base_qs = ClientApplication.objects.filter(
             category__iexact='A',
+            is_archived=False,
             status__in=['PENDING', 'FAILED', 'CANCELED']
-        ))
+        )
 
-    apps = run_in_db_thread(_fetch_eligible)
+        # Mapping of user-selected sort options to Django ORM order_by expressions
+        order_mappings = {
+            "created_at": ["created_at", "id"],
+            "-created_at": ["-created_at", "-id"],
+            "teacher": ["teacher__name", "created_at"],
+            "status": ["status", "created_at"],
+            "first_name": ["first_name", "last_name", "created_at"],
+        }
+        order_fields = order_mappings.get(sort_by, ["created_at", "id"])
+
+        if use_priority:
+            # Group 1: Priority applications sorted by user criteria
+            priority_group = list(base_qs.filter(is_priority=True).order_by(*order_fields))
+            # Group 2: Remaining non-priority applications sorted by user criteria
+            remaining_group = list(base_qs.filter(is_priority=False).order_by(*order_fields))
+            print(f"[Cat A Auto-Launcher] Found {len(priority_group)} PRIORITY and {len(remaining_group)} remaining applications.")
+            return priority_group + remaining_group
+        else:
+            return list(base_qs.order_by(*order_fields))
+
+    apps = run_in_db_thread(_fetch_ordered_candidates)
     
     if not apps:
         print("[Cat A Auto-Launcher] No eligible Category A applications found.")
@@ -255,10 +302,9 @@ def _auto_launch_cat_a_batch():
         return
 
     total = len(apps)
-    print(f"[Cat A Auto-Launcher] Found {total} eligible Category A application(s). Launching in batches of 15 every 30 seconds...")
+    print(f"[Cat A Auto-Launcher] Found {total} eligible Category A application(s). Launching in batches of {batch_size} every 30 seconds...")
     slot_checker_state["status"] = f"Auto-launching Category A automation: 0/{total} applications started..."
 
-    batch_size = 15
     launched_count = 0
 
     for i in range(0, total, batch_size):
@@ -270,14 +316,17 @@ def _auto_launch_cat_a_batch():
                 worker_thread.start()
                 launched_count += 1
                 
-                def _log_activity(app_id, app_name):
+                def _log_activity(app_id, app_name, is_pri):
+                    desc = "Auto-launched by Category A Slot Checker (30s timeout)"
+                    if is_pri:
+                        desc += " [PRIORITY]"
                     SystemActivityLog.objects.create(
                         action_type=SystemActivityLog.ActionType.ENGINE,
-                        description="Auto-launched by Category A Slot Checker (30s timeout)",
+                        description=desc,
                         application_name=app_name,
                         application_id=app_id
                     )
-                run_in_db_thread(_log_activity, app.id, f"{app.first_name} {app.last_name}")
+                run_in_db_thread(_log_activity, app.id, f"{app.first_name} {app.last_name}", getattr(app, 'is_priority', False))
             except Exception as e:
                 print(f"[Cat A Auto-Launcher Error] Failed to launch worker for app {app.id}: {e}")
 

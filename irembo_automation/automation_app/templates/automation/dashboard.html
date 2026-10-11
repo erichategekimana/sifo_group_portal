@@ -80,8 +80,8 @@
             <div>Checks: <span id="cat-a-count" class="font-bold text-white">0</span></div>
             <div>Last: <span id="cat-a-last" class="font-bold text-white">—</span></div>
             <div class="flex gap-2">
-                <button type="button" id="btn-start-cat-a" onclick="controlCatAChecker('start')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5">
-                    Start A-Checker
+                <button type="button" id="btn-start-cat-a" onclick="openCatAConfigModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5">
+                    ⚙ Start A-Checker
                 </button>
                 <button type="button" id="btn-stop-cat-a" onclick="controlCatAChecker('stop')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5 hidden">
                     Stop
@@ -123,6 +123,16 @@
                             {% for value, label in payment_choices %}
                                 <option value="{{ value }}" {% if payment_filter == value %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Priority Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Priority (Slot Checker)</label>
+                        <select name="priority" class="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">All Applications</option>
+                            <option value="1" {% if priority_filter == '1' %}selected{% endif %}>⭐ Priority Only ({{ priority_count }})</option>
+                            <option value="0" {% if priority_filter == '0' %}selected{% endif %}>Non-Priority Only</option>
                         </select>
                     </div>
 
@@ -248,11 +258,20 @@
                 <button type="button" onclick="performAction('mark_unpaid')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     ✕ Mark Unpaid
                 </button>
+                <button type="button" onclick="performAction('mark_priority')" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded transition-all shadow flex items-center gap-1">
+                    ⭐ Mark Priority
+                </button>
+                <button type="button" onclick="performAction('unmark_priority')" class="bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
+                    Unmark Priority
+                </button>
                 <button type="button" onclick="performAction('archive')" class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     📦 Archive Selected
                 </button>
                 <button type="button" onclick="performAction('delete')" class="bg-red-600 hover:bg-red-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     🗑 Delete Selected
+                </button>
+                <button type="button" onclick="terminateAllRunning()" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded transition-all shadow-md ml-auto flex items-center gap-1.5 cursor-pointer" title="Terminate all running and processing applications immediately">
+                    🛑 Terminate All Running
                 </button>
                 <input type="hidden" name="action" id="bulk-action-input">
             </div>
@@ -281,7 +300,14 @@
                                 <input type="checkbox" name="selected_ids" value="{{ app.id }}" class="app-checkbox w-4 h-4 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded cursor-pointer">
                             </td>
                             <td class="p-4">
-                                <div class="font-bold text-sm text-slate-800 dark:text-slate-200">{{ app.first_name }} {{ app.last_name }}</div>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-sm text-slate-800 dark:text-slate-200">{{ app.first_name }} {{ app.last_name }}</span>
+                                    {% if app.is_priority %}
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/50 shadow-sm whitespace-nowrap" title="Prioritized for Category A Slot Checker">
+                                            ⭐ Priority
+                                        </span>
+                                    {% endif %}
+                                </div>
                                 <div class="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">{{ app.email|default:"No email" }}</div>
                             </td>
                             <td class="p-4">
@@ -420,7 +446,82 @@
         </div>
     </div>
 
-    <!-- Category A Slots Found Alarm Modal -->
+    <!-- Category A Slot Checker Configuration Modal -->
+    <div id="cat-a-config-modal" class="fixed inset-0 flex items-center justify-center p-4 z-[75] hidden bg-black/80 backdrop-blur-md transition-all">
+        <div class="bg-slate-900 border-2 border-indigo-500/60 rounded-3xl max-w-xl w-full p-6 shadow-2xl text-white relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">⚙️</span>
+                    <div>
+                        <h2 class="text-xl font-bold tracking-wide text-indigo-300">Configure a slot checker</h2>
+                    </div>
+                </div>
+                <button type="button" onclick="closeCatAConfigModal()" class="text-slate-400 hover:text-white text-xl p-1 font-bold cursor-pointer">✕</button>
+            </div>
+
+            <!-- Option 1: Batch Size Selection -->
+            <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                <label for="cat-a-batch-size-input" class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-2.5">
+                    1. Application Batch Launch Size
+                </label>
+                <select id="cat-a-batch-size-input" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
+                    <option value="3">3 Applications</option>
+                    <option value="5">5 Applications</option>
+                    <option value="8">8 Applications</option>
+                    <option value="10" selected>10 Applications (Recommended)</option>
+                    <option value="15">15 Applications</option>
+                    <option value="20">20 Applications</option>
+                    <option value="25">25 Applications</option>
+                    <option value="30">30 Applications</option>
+                    <option value="40">40 Applications</option>
+                    <option value="50">50 Applications</option>
+                </select>
+            </div>
+
+            <!-- Option 2: Execution Sort Order -->
+            <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                <label class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-1.5">
+                    2. Execution Sort Order
+                </label>
+                <p class="text-xs text-slate-400 mb-2.5">Choose which applications get processed first when automation starts:</p>
+                <select id="cat-a-sort-by" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
+                    <option value="created_at" selected>📅 Oldest First (Registered First)</option>
+                    <option value="-created_at">📅 Newest First (Recently Added)</option>
+                    <option value="teacher">🎓 By Teacher (Group by Teacher Name)</option>
+                    <option value="status">⚡ By Pipeline Status (Pending first, then Failed)</option>
+                    <option value="first_name">🔤 By Applicant Name (A-Z)</option>
+                </select>
+            </div>
+
+            <!-- Option 3: Priority Applications Preference -->
+            <div class="mb-6 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="cat-a-use-priority" checked 
+                            class="w-5 h-5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900 cursor-pointer">
+                        <label for="cat-a-use-priority" class="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
+                            ⭐ Prioritize Marked Applications
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                                {{ priority_count }} currently marked
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Action Buttons -->
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onclick="closeCatAConfigModal()" 
+                    class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmStartCatAChecker()" 
+                    class="px-6 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all cursor-pointer flex items-center gap-2">
+                    <span>🚀</span> Start Checking Now
+                </button>
+            </div>
+        </div>
+    </div>
     <div id="cat-a-alarm-modal" class="fixed inset-0 flex items-center justify-center p-6 z-[70] hidden bg-black/80 backdrop-blur-md transition-all">
         <div class="bg-gradient-to-b from-rose-950 to-slate-900 border-4 border-rose-500 rounded-3xl max-w-2xl w-full p-8 shadow-[0_0_50px_rgba(244,63,94,0.6)] text-center relative animate-bounce">
             <div class="text-2xl font-black text-rose-500 mb-2 tracking-widest uppercase">[ ALERT ]</div>
@@ -459,6 +560,53 @@
             
             document.getElementById('bulk-action-input').value = action;
             document.getElementById('bulk-form').submit();
+        }
+
+        // Terminate All Running Applications Handler
+        function terminateAllRunning() {
+            if (!confirm("Are you sure you want to terminate all running applications?\n\nAll active browsers will be closed immediately, and all applications with 'Filling Form on Irembo' status will be changed to 'FAILED'.")) {
+                return;
+            }
+
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '';
+
+            fetch("{% url 'terminate_all_running' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update live metrics immediately
+                    updateDashboardMetrics();
+                    // Reload page after brief pause to refresh server-side rendered stats cards as well
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    alert('Failed to terminate applications: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                console.error('Error terminating running applications:', err);
+                // Fallback to standard form post
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = "{% url 'terminate_all_running' %}";
+                if (csrfToken) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'csrfmiddlewaretoken';
+                    input.value = csrfToken;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
+            });
         }
 
         // Live Status Update
@@ -826,7 +974,66 @@
             }
         }
 
+        // --- Category A Modal Handlers ---
+        function openCatAConfigModal() {
+            const modal = document.getElementById('cat-a-config-modal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeCatAConfigModal() {
+            const modal = document.getElementById('cat-a-config-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function selectBatchPill(size) {
+            document.getElementById('cat-a-batch-size-input').value = size;
+            document.querySelectorAll('.batch-pill').forEach(pill => {
+                pill.className = 'batch-pill px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 hover:border-indigo-500 transition-all';
+            });
+            const selectedPill = document.getElementById(`batch-pill-${size}`);
+            if (selectedPill) {
+                selectedPill.className = 'batch-pill px-4 py-2 rounded-xl text-xs font-bold border border-indigo-500 bg-indigo-600/30 text-indigo-300 hover:border-indigo-400 transition-all';
+            }
+        }
+
+        function confirmStartCatAChecker() {
+            const batchSize = parseInt(document.getElementById('cat-a-batch-size-input').value) || 10;
+            const usePriority = document.getElementById('cat-a-use-priority').checked;
+            const sortBy = document.getElementById('cat-a-sort-by').value || 'created_at';
+
+            closeCatAConfigModal();
+
+            fetch('/api/slot-checker/start/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    batch_size: batchSize,
+                    use_priority: usePriority,
+                    sort_by: sortBy
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    alert(data.message);
+                }
+                updateCatAStatus();
+            })
+            .catch(err => {
+                console.error("Cat A Checker start error:", err);
+                alert("Failed to start slot checker. Please try again.");
+            });
+        }
+
         function controlCatAChecker(action) {
+            if (action === 'start') {
+                openCatAConfigModal();
+                return;
+            }
+
             fetch(`/api/slot-checker/${action}/`, {
                 method: 'POST',
                 headers: {'X-CSRFToken': '{{ csrf_token }}'}

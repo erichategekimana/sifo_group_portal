@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/slot-checker/stop/', views.api_stop_slot_checker, name='api_stop_slot_checker'),
     path('api/slot-checker/status/', views.api_status_slot_checker, name='api_status_slot_checker'),
     path('api/slot-checker/ack/', views.api_ack_slot_alert, name='api_ack_slot_alert'),
+    path('terminate-all/', views.terminate_all_running, name='terminate_all_running'),
     path('export/', views.export_applications, name='export_applications'),
     path('teachers/', views.manage_teachers, name='manage_teachers'),
     path('teachers/delete/<int:teacher_id>/', views.delete_teacher, name='delete_teacher'),

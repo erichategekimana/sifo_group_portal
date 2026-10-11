@@ -16,6 +16,10 @@ from automation_app.automation_engine import IremboAutomationEngine
 from automation_app.automation_engine.utils import run_in_db_thread, AbortTaskException
 from playwright.sync_api import sync_playwright  # type: ignore[import]
 
+# Thread-safe registry to track active browsers for running applications
+_active_browser_instances = {}
+_browser_registry_lock = threading.Lock()
+
 def run_automation_worker(application_id):
     max_attempts = 3
 
@@ -82,11 +86,18 @@ def run_automation_worker(application_id):
             with sync_playwright() as p:
                 engine = IremboAutomationEngine(booking_record=application)
                 engine.initialize_stealth_browser(p, headless=False)
-                engine.navigate_to_booking_form(
-                    national_id=application.national_id,
-                    verification_data=application.first_name
-                )
-                billing_id = engine.start_slot_polling()
+                with _browser_registry_lock:
+                    _active_browser_instances[application_id] = engine.browser
+
+                try:
+                    engine.navigate_to_booking_form(
+                        national_id=application.national_id,
+                        verification_data=application.first_name
+                    )
+                    billing_id = engine.start_slot_polling()
+                finally:
+                    with _browser_registry_lock:
+                        _active_browser_instances.pop(application_id, None)
                 
                 # Check status inside the DB in case slot secured & successfully completed
                 def _get_final_status():
@@ -236,7 +247,7 @@ def dashboard(request):
             del request.session['dashboard_filters']
         return redirect('dashboard')
 
-    filter_keys = ['q', 'status', 'payment', 'teacher', 'date_from', 'date_to', 'sort']
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'priority', 'date_from', 'date_to', 'sort']
     has_get_filters = any(key in request.GET for key in filter_keys)
 
     if has_get_filters:
@@ -244,6 +255,7 @@ def dashboard(request):
         status_filter = request.GET.get('status', '').strip()
         payment_filter = request.GET.get('payment', '').strip()
         teacher_filter = request.GET.get('teacher', '').strip()
+        priority_filter = request.GET.get('priority', '').strip()
         date_from = request.GET.get('date_from', '').strip()
         date_to = request.GET.get('date_to', '').strip()
         sort_by = request.GET.get('sort', '-created_at').strip()
@@ -253,6 +265,7 @@ def dashboard(request):
             'status': status_filter,
             'payment': payment_filter,
             'teacher': teacher_filter,
+            'priority': priority_filter,
             'date_from': date_from,
             'date_to': date_to,
             'sort': sort_by,
@@ -263,6 +276,7 @@ def dashboard(request):
         status_filter = saved_filters.get('status', '')
         payment_filter = saved_filters.get('payment', '')
         teacher_filter = saved_filters.get('teacher', '')
+        priority_filter = saved_filters.get('priority', '')
         date_from = saved_filters.get('date_from', '')
         date_to = saved_filters.get('date_to', '')
         sort_by = saved_filters.get('sort', '-created_at')
@@ -291,6 +305,12 @@ def dashboard(request):
     # Apply payment filter
     if payment_filter:
         applications = applications.filter(payment_status=payment_filter)
+
+    # Apply priority filter
+    if priority_filter == '1':
+        applications = applications.filter(is_priority=True)
+    elif priority_filter == '0':
+        applications = applications.filter(is_priority=False)
 
     # Apply teacher filter
     if teacher_filter == 'none':
@@ -331,6 +351,7 @@ def dashboard(request):
     teachers = Teacher.objects.all()
     active_count = active_apps_qs.count()
     archived_count = ClientApplication.objects.filter(is_archived=True).count()
+    priority_count = active_apps_qs.filter(is_priority=True).count()
     
     context = {
         'applications': applications,
@@ -338,6 +359,8 @@ def dashboard(request):
         'status_filter': status_filter,
         'payment_filter': payment_filter,
         'teacher_filter': teacher_filter,
+        'priority_filter': priority_filter,
+        'priority_count': priority_count,
         'date_from': date_from,
         'date_to': date_to,
         'sort_by': sort_by,
@@ -743,10 +766,32 @@ def bulk_action(request):
         SystemActivityLog.objects.create(
             action_type=SystemActivityLog.ActionType.BULK,
             description=f"Bulk action: Marked {count} applications as UNPAID",
-            application_name=f"Multiple Applications",
+            application_name="Multiple Applications",
             application_id=None
         )
         messages.success(request, f'Marked {apps.count()} applications as unpaid')
+
+    elif action == 'mark_priority':
+        count = apps.count()
+        apps.update(is_priority=True)
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Marked {count} applications as PRIORITY for Slot Checker",
+            application_name="Multiple Applications",
+            application_id=None
+        )
+        messages.success(request, f'Marked {count} application(s) as Priority for Slot Checker')
+
+    elif action == 'unmark_priority':
+        count = apps.count()
+        apps.update(is_priority=False)
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Bulk action: Removed Priority from {count} applications",
+            application_name="Multiple Applications",
+            application_id=None
+        )
+        messages.success(request, f'Removed Priority status from {count} application(s)')
     
     return redirect(redirect_target)
 
@@ -919,8 +964,32 @@ def manage_session(request):
 @csrf_exempt
 @require_POST
 def api_start_slot_checker(request):
+    import json
     from .slot_checker import start_slot_checker
-    success, msg = start_slot_checker()
+    
+    batch_size = 10
+    use_priority = True
+    sort_by = 'created_at'
+
+    # Support JSON payload or Form data
+    if request.body:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            batch_size = data.get('batch_size', batch_size)
+            use_priority = data.get('use_priority', use_priority)
+            sort_by = data.get('sort_by', sort_by)
+        except Exception:
+            pass
+    if not request.body or not data:
+        batch_size = request.POST.get('batch_size', batch_size)
+        use_priority = request.POST.get('use_priority', 'true').lower() in ['true', '1', 'yes']
+        sort_by = request.POST.get('sort_by', sort_by)
+
+    success, msg = start_slot_checker(
+        batch_size=batch_size,
+        use_priority=use_priority,
+        sort_by=sort_by
+    )
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 @csrf_exempt
@@ -941,6 +1010,54 @@ def api_ack_slot_alert(request):
     from .slot_checker import acknowledge_slot_alert
     success, msg = acknowledge_slot_alert()
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
+
+@csrf_exempt
+@require_POST
+def terminate_all_running(request):
+    """
+    Terminates all running/processing applications:
+    - Closes their active Chrome browser instances immediately.
+    - Sets their status to FAILED in the database.
+    - Adds an informative log line explaining they were terminated by the user.
+    """
+    # 1. Close all active browser windows immediately
+    with _browser_registry_lock:
+        active_browsers = list(_active_browser_instances.items())
+        for app_id, browser in active_browsers:
+            try:
+                browser.close()
+            except Exception as e:
+                print(f"[Terminate] Error closing browser for app {app_id}: {e}")
+        _active_browser_instances.clear()
+
+    # 2. Query all applications currently in PROCESSING or FINALIZING status
+    running_apps = ClientApplication.objects.filter(
+        status__in=[ClientApplication.ProcessStatus.PROCESSING, ClientApplication.ProcessStatus.FINALIZING]
+    )
+    count = running_apps.count()
+    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for app in running_apps:
+        app.status = ClientApplication.ProcessStatus.FAILED
+        app.last_error = "Process terminated by user via dashboard."
+        app.failure_reason = "USER_TERMINATED"
+        app.log_output = (app.log_output or "") + f"[{timestamp}] [WARNING] Process manually terminated by user. Status set to FAILED.\n"
+        app.save(update_fields=["status", "last_error", "failure_reason", "log_output"])
+
+    if count > 0:
+        SystemActivityLog.objects.create(
+            action_type=SystemActivityLog.ActionType.BULK,
+            description=f"Emergency: Terminated {count} running application(s) and set status to FAILED",
+            application_name="Multiple Applications",
+            application_id=None
+        )
+
+    # Return JSON if requested via fetch, otherwise redirect
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.content_type == 'application/json':
+        return JsonResponse({'status': 'success', 'terminated_count': count})
+
+    messages.warning(request, f"Terminated {count} running application(s). All status changed to FAILED.")
+    return redirect('dashboard')
 
 
 def _generate_excel_response(applications, title_name="applications"):

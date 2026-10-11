@@ -141,6 +141,11 @@ class ClientApplication(models.Model):
         db_index=True,
         help_text="True if application is archived (hidden from active dashboard box)"
     )
+    is_priority = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True if application is prioritized for automatic execution by slot checker"
+    )
 
     # Metadata Audit Trail
     created_at = models.DateTimeField(auto_now_add=True)

@@ -125,7 +125,16 @@ $OpenBrowserJob = {
 }
 Start-Job -ScriptBlock $OpenBrowserJob -ArgumentList "http://localhost:$Port/" | Out-Null
 
-# 7. Start Django in the interactive foreground console
+# 7. Apply any pending database migrations automatically
+Write-Host "[INFO] Checking database migrations..." -ForegroundColor Yellow
+& "$VenvPython" "$ManagePy" migrate --noinput
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Database migration check finished with code $LASTEXITCODE. Proceeding to server launch..."
+} else {
+    Write-Host "[OK] Database schema is up to date." -ForegroundColor Green
+}
+
+# 8. Start Django in the interactive foreground console
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host " Server starting at: http://localhost:$Port/              " -ForegroundColor Green
