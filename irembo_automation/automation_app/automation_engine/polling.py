@@ -2,6 +2,7 @@
 import random
 import time
 from .utils import run_in_db_thread
+from .locations import get_location_strategy, LocationStrategy
 
 class PollingMixin:
     def _get_time_options(self):
@@ -45,26 +46,23 @@ class PollingMixin:
 
     def _select_time_slot_by_index(self, index):
         """
-        Selects the time option at the given index (0‑based).
-        Returns True on success.
+        Re-opens the time dropdown and clicks the option at index.
         """
-        for attempt in range(3):
-            time_dropdown = self.page.locator('label:has-text("Igihe") + ng-select, ng-select[bindlabel="formatted"]')
-            if not time_dropdown.is_visible():
-                time_dropdown = self.page.locator('ng-select:has-text("Guhitamo hakurikijwe igihe")').first
-            if time_dropdown.is_visible():
-                break
-            time.sleep(0.5)
-        else:
-            print("[Warning] Time dropdown not found.")
+        time_dropdown = self.page.locator('label:has-text("Igihe") + ng-select, ng-select[bindlabel="formatted"]')
+        if not time_dropdown.is_visible():
+            time_dropdown = self.page.locator('ng-select:has-text("Guhitamo hakurikijwe igihe")').first
+
+        if not time_dropdown.is_visible():
+            print("[Time] Dropdown not visible.")
             return False
 
-        # Robust click loop for the dropdown to ensure panel opens
+        # If panel is not open, click with retries to open it
         panel_opened = False
         for attempt in range(3):
             try:
-                time_dropdown.click(force=True, timeout=5000)
-                self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                if not self.page.locator('.ng-dropdown-panel').is_visible():
+                    time_dropdown.click(force=True, timeout=5000)
+                    self.page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
                 panel_opened = True
                 break
             except Exception as e:
@@ -85,12 +83,20 @@ class PollingMixin:
         time.sleep(1)
         return True
 
-    def evaluate_and_select_slot(self, target_center="BUSANZA"):
+    def evaluate_and_select_slot(self, target_center=None, location_strategy=None):
+        """
+        Evaluates visible slots on the current booking page against the target center/strategy.
+        If a matching slot with capacity > 0 is found, clicks it and advances to next step.
+        """
         badge_element = self.page.locator('.appointments-header h2.title span.badge')
         if not badge_element.is_visible():
             return False
 
-        available_slots_count = int(badge_element.inner_text().strip())
+        try:
+            available_slots_count = int(badge_element.inner_text().strip())
+        except (ValueError, TypeError):
+            return False
+
         if available_slots_count == 0:
             return False
 
@@ -99,7 +105,7 @@ class PollingMixin:
             if "dimmed" in (slot.get_attribute("class") or ""):
                 continue
 
-            center_details = slot.locator(".center").inner_text().upper()
+            center_details = slot.locator(".center").inner_text().strip()
             capacity_text = slot.locator(".capacity-circle").inner_text().strip()
 
             try:
@@ -107,7 +113,19 @@ class PollingMixin:
             except ValueError:
                 capacity = 0
 
-            if target_center in center_details and capacity > 0:
+            if capacity <= 0:
+                continue
+
+            # Check match using OOP strategy if provided, otherwise fallback to target_center substring
+            is_match = False
+            if location_strategy is not None:
+                is_match = location_strategy.matches_center(center_details)
+            elif target_center:
+                is_match = target_center.upper() in center_details.upper()
+            else:
+                is_match = True
+
+            if is_match:
                 print(f"[Slot Match] Locking center location: {center_details} ({capacity} seats)")
                 slot.click()
                 time.sleep(0.5)
@@ -117,37 +135,54 @@ class PollingMixin:
                     return True
         return False
 
-    def start_slot_polling(self, target_center="BUSANZA AUTOMATED CENTER"):
+    def start_slot_polling(self, target_center=None, target_district=None):
         self.log_message("Polling engine activated. Monitoring availability maps...")
 
-        # 1. Select category
-        if self.booking_record and self.booking_record.category:
-            self.log_message(f"Setting category selection to: {self.booking_record.category}")
+        # Resolve target district, working site, and category dynamically from booking record if available
+        record_district = None
+        record_site = None
+        record_category = None
+
+        if self.booking_record:
+            record_district = getattr(self.booking_record, 'district', None)
+            record_site = getattr(self.booking_record, 'working_site', None)
+            record_category = getattr(self.booking_record, 'category', None)
+
+        chosen_district = (target_district or record_district or "Kicukiro").strip()
+        chosen_site = target_center or record_site
+
+        # Initialize OOP location strategy
+        loc_strategy = get_location_strategy(district=chosen_district, working_site=chosen_site)
+        target_display_name = loc_strategy.get_target_name()
+        refresh_district = loc_strategy.get_refresh_district()
+
+        # 1. Select category dynamically
+        if record_category:
+            self.log_message(f"Setting category selection to: {record_category}")
             category_control = "categoryFormControl"
             if not self.page.locator(f'ng-select[formcontrolname="{category_control}"]').is_visible():
                 category_control = "licenseCategoryFormControl"
-            self.select_category_dropdown(category_control, self.booking_record.category)
+            self.select_category_dropdown(category_control, record_category)
         else:
             self.log_message("No target category specified. Skipping.", level="WARNING")
 
-        # 2. Select district
+        # 2. Select district dynamically
         district_control = "locationFormControl"
         if not self.page.locator(f'ng-select[formcontrolname="{district_control}"]').is_visible():
             district_control = "districtFormControl"
 
-        self.log_message(f"Setting district selection (using control: {district_control}) to Kicukiro...")
-        self.set_angular_dropdown(district_control, "Kicukiro")
+        self.log_message(f"Setting district selection (control: {district_control}) to '{chosen_district}' (Site target: '{target_display_name}')...")
+        self.set_angular_dropdown(district_control, chosen_district)
 
         # 3. Get available time options
         time_options = self._get_time_options()
         if not time_options:
-            self.log_message("No time options found. Aborting.", level="ERROR")
+            self.log_message(f"No time options found in {chosen_district}. Aborting.", level="ERROR")
             return None
 
         time_index = 0
         consecutive_errors = 0
         cycle_count = 0
-        target_district = "Kicukiro"
 
         while True:
             try:
@@ -165,7 +200,7 @@ class PollingMixin:
                     if time_index >= len(time_options):
                         cycle_count += 1
                         if cycle_count >= 2:
-                            self.log_message(f"Ntakode zibonetse muri {target_district}. Exiting polling gracefully.")
+                            self.log_message(f"Ntakode zibonetse muri {chosen_district}. Exiting polling gracefully.")
                             if self.booking_record:
                                 record = self.booking_record
                                 def _fail():
@@ -177,25 +212,28 @@ class PollingMixin:
                                 run_in_db_thread(_fail)
                             return None
                             
-                        # All times exhausted – toggle district
-                        self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh...")
-                        self.set_angular_dropdown(district_control, "Gasabo")
+                        # All times exhausted – toggle district to refresh with human-mimicking delay
+                        self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh ({chosen_district} <-> {refresh_district})...")
+                        self.set_angular_dropdown(district_control, refresh_district)
                         time.sleep(random.uniform(1.2, 2.5))
-                        self.set_angular_dropdown(district_control, target_district)
+                        self.set_angular_dropdown(district_control, chosen_district)
                         time.sleep(random.uniform(1.2, 2.5))
                         time_options = self._get_time_options()
                         if not time_options:
-                            self.log_message("No time options after district toggle. Waiting and retrying...", level="WARNING")
-                            time.sleep(5)
+                            self.log_message(f"No time options after refreshing {chosen_district}. Waiting and retrying...", level="WARNING")
+                            time.sleep(random.uniform(3.0, 5.0))
                             continue
                         time_index = 0
                     continue
 
-                # Now check slots
-                slot_secured = self.evaluate_and_select_slot(target_center=target_center)
+                # Now check slots using OOP location strategy
+                slot_secured = self.evaluate_and_select_slot(
+                    target_center=chosen_site,
+                    location_strategy=loc_strategy
+                )
 
                 if slot_secured:
-                    self.log_message(f"Slot secured at {target_center}! Proceeding to finalization...")
+                    self.log_message(f"Slot secured at {target_display_name}! Proceeding to finalization...")
                     try:
                         client_phone = self.booking_record.phone_number if self.booking_record else "0780000000"
                         billing_id = self.finalize_booking(phone_number=client_phone)
@@ -216,7 +254,7 @@ class PollingMixin:
                 if time_index >= len(time_options):
                     cycle_count += 1
                     if cycle_count >= 2:
-                        self.log_message(f"Ntakode zibonetse muri {target_district}. Exiting polling gracefully.")
+                        self.log_message(f"Ntakode zibonetse muri {chosen_district}. Exiting polling gracefully.")
                         if self.booking_record:
                             record = self.booking_record
                             def _fail():
@@ -228,20 +266,20 @@ class PollingMixin:
                             run_in_db_thread(_fail)
                         return None
                         
-                    # All times exhausted – toggle district to refresh
-                    self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh...")
-                    self.set_angular_dropdown(district_control, "Gasabo")
+                    # All times exhausted – toggle district to refresh with human-mimicking delay
+                    self.log_message(f"All time slots exhausted (Cycle {cycle_count}/2). Toggling district to refresh ({chosen_district} <-> {refresh_district})...")
+                    self.set_angular_dropdown(district_control, refresh_district)
                     time.sleep(random.uniform(1.2, 2.5))
-                    self.set_angular_dropdown(district_control, target_district)
+                    self.set_angular_dropdown(district_control, chosen_district)
                     time.sleep(random.uniform(1.2, 2.5))
                     time_options = self._get_time_options()
                     if not time_options:
-                        self.log_message("No time options after district toggle. Waiting and retrying...", level="WARNING")
-                        time.sleep(5)
+                        self.log_message(f"No time options after refreshing {chosen_district}. Waiting and retrying...", level="WARNING")
+                        time.sleep(random.uniform(3.0, 5.0))
                         continue
                     time_index = 0
 
-                # Small delay between time attempts
+                # Small human-like delay between time attempts
                 time.sleep(random.uniform(1.0, 2.0))
 
             except InterruptedError as ie:

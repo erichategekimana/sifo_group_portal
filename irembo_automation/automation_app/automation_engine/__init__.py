@@ -9,6 +9,12 @@ from .final import FinalizationMixin
 from .utils import UtilsMixin
 from .validator import ValidatorMixin
 from .error_detector import ErrorDetectionMixin
+from .locations import (
+    LocationStrategy,
+    KicukiroLocationStrategy,
+    StandardDistrictLocationStrategy,
+    get_location_strategy,
+)
 
 class IremboAutomationEngine(
     BrowserMixin,
