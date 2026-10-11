@@ -6,6 +6,19 @@ import signal
 import concurrent.futures
 from contextlib import contextmanager
 
+def grant_foreground_permission():
+    """
+    Safely request Windows to allow child processes to show foreground windows.
+    No-op on non-Windows platforms.
+    """
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            # ASFW_ANY = -1 allows any process to take the foreground
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+        except Exception:
+            pass
+
 def kill_browser_processes(user_data_dir):
     """
     Search /proc for any chromium/chrome processes running with this specific user_data_dir as an argument, and kill them.

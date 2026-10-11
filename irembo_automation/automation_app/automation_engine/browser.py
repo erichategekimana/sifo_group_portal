@@ -18,15 +18,24 @@ class BrowserMixin:
         from .config import SESSION_STATE_PATH
         
         print("[Engine] Launching ephemeral Chrome profile for worker...")
+        # Build launch arguments
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-features=CalculateNativeWinOcclusion",
+        ]
+        if not headless:
+            launch_args.extend([
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--start-normal",
+            ])
+
         self.browser = p.chromium.launch(
             headless=headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-                "--disable-features=CalculateNativeWinOcclusion",
-            ]
+            args=launch_args
         )
         
         state_kwargs = {}
@@ -55,6 +64,12 @@ class BrowserMixin:
 
         # Create a fresh tab to avoid stale DOM from restored sessions
         self.page = self.context.new_page()
+        if not headless:
+            try:
+                self.page.bring_to_front()
+            except Exception:
+                pass
+
         # Close all other restored tabs to clean up the UI
         for p in self.context.pages[:-1]:
             try:

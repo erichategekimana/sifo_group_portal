@@ -99,12 +99,148 @@ def _check_slots_on_page(engine, target_center="BUSANZA AUTOMATED CENTER"):
                             pass
     return False, ""
 
+def _safe_get_time_options(engine):
+    """
+    Safely retrieves time schedule options from the Angular dropdown on Irembo.
+    Gracefully handles empty dropdown panels and slower Angular rendering without
+    raising unhandled 3000ms Playwright TimeoutErrors.
+    Returns list of strings (empty list [] if no time schedules exist).
+    """
+    page = engine.page
+    if not page or page.is_closed():
+        return []
+
+    # 1. Locate the time dropdown
+    time_dropdown = None
+    for _ in range(4):
+        try:
+            cand = page.locator('label:has-text("Igihe") + ng-select, ng-select[bindlabel="formatted"]')
+            if cand.is_visible():
+                time_dropdown = cand
+                break
+            cand = page.locator('ng-select:has-text("Guhitamo hakurikijwe igihe")').first
+            if cand.is_visible():
+                time_dropdown = cand
+                break
+            cand = page.locator('ng-select[formcontrolname*="time" i], ng-select[formcontrolname*="schedule" i]').first
+            if cand.is_visible():
+                time_dropdown = cand
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    if not time_dropdown or not time_dropdown.is_visible():
+        print("[Cat A Slot Checker] Time dropdown not visible.")
+        return []
+
+    # Check if disabled
+    try:
+        class_attr = time_dropdown.get_attribute("class") or ""
+        aria_disabled = time_dropdown.get_attribute("aria-disabled")
+        if "ng-select-disabled" in class_attr or aria_disabled == "true":
+            print("[Cat A Slot Checker] Time dropdown is disabled (no schedules available).")
+            return []
+    except Exception:
+        pass
+
+    # 2. Open the dropdown panel
+    panel_opened = False
+    try:
+        if page.locator('.ng-dropdown-panel').is_visible():
+            panel_opened = True
+    except Exception:
+        pass
+
+    if not panel_opened:
+        for attempt in range(3):
+            try:
+                time_dropdown.click(force=True, timeout=5000)
+                page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                panel_opened = True
+                break
+            except Exception as e:
+                print(f"[Cat A Slot Checker] Attempt {attempt+1} to open time dropdown panel failed: {e}")
+                time.sleep(1.0)
+
+    if not panel_opened:
+        print("[Cat A Slot Checker] Failed to open time dropdown panel after retries.")
+        return []
+
+    # 3. Wait for options safely without raising unhandled TimeoutError
+    options = page.locator('.ng-dropdown-panel .ng-option')
+    try:
+        options.first.wait_for(state="visible", timeout=4000)
+    except Exception:
+        print("[Cat A Slot Checker] No options visible in time dropdown panel (no slots available).")
+
+    # 4. Extract valid option texts
+    texts = []
+    try:
+        count = options.count()
+        for i in range(count):
+            t = options.nth(i).inner_text().strip()
+            if t and "no items" not in t.lower() and "ntabibonetse" not in t.lower():
+                texts.append(t)
+    except Exception as e:
+        print(f"[Cat A Slot Checker] Error reading dropdown options: {e}")
+
+    # 5. Clean up open dropdown panel
+    try:
+        if page.locator('.ng-dropdown-panel').is_visible():
+            page.keyboard.press("Escape")
+    except Exception:
+        pass
+
+    return texts
+
+def _safe_select_time_slot_by_index(engine, index):
+    """
+    Safely selects a time option at the given index without throwing uncaught errors.
+    """
+    page = engine.page
+    if not page or page.is_closed():
+        return False
+
+    try:
+        time_dropdown = page.locator('label:has-text("Igihe") + ng-select, ng-select[bindlabel="formatted"]')
+        if not time_dropdown.is_visible():
+            time_dropdown = page.locator('ng-select:has-text("Guhitamo hakurikijwe igihe")').first
+
+        if not time_dropdown.is_visible():
+            return False
+
+        if not page.locator('.ng-dropdown-panel').is_visible():
+            for _ in range(3):
+                try:
+                    time_dropdown.click(force=True, timeout=5000)
+                    page.wait_for_selector(".ng-dropdown-panel", state="visible", timeout=5000)
+                    break
+                except Exception:
+                    time.sleep(1.0)
+
+        options = page.locator('.ng-dropdown-panel .ng-option')
+        count = options.count()
+        if index >= count:
+            return False
+
+        options.nth(index).click(timeout=5000)
+        time.sleep(1.0)
+        return True
+    except Exception as e:
+        print(f"[Cat A Slot Checker] Error selecting time slot index {index}: {e}")
+        return False
+
 def _auto_launch_cat_a_batch():
     from .models import ClientApplication, SystemActivityLog
     from .views import run_automation_worker
+    from .automation_engine.utils import grant_foreground_permission
 
     print("[Cat A Auto-Launcher] Starting automatic batch execution for Category A applications...")
     
+    # Request Windows to allow child processes to show foreground windows
+    grant_foreground_permission()
+
     def _fetch_eligible():
         return list(ClientApplication.objects.filter(
             category__iexact='A',
@@ -119,7 +255,7 @@ def _auto_launch_cat_a_batch():
         return
 
     total = len(apps)
-    print(f"[Cat A Auto-Launcher] Found {total} eligible Category A application(s). Launching in batches of 15 every 10 seconds...")
+    print(f"[Cat A Auto-Launcher] Found {total} eligible Category A application(s). Launching in batches of 15 every 30 seconds...")
     slot_checker_state["status"] = f"Auto-launching Category A automation: 0/{total} applications started..."
 
     batch_size = 15
@@ -129,6 +265,7 @@ def _auto_launch_cat_a_batch():
         batch = apps[i:i + batch_size]
         for app in batch:
             try:
+                grant_foreground_permission()
                 worker_thread = threading.Thread(target=run_automation_worker, args=(app.id,), daemon=True)
                 worker_thread.start()
                 launched_count += 1
@@ -144,12 +281,15 @@ def _auto_launch_cat_a_batch():
             except Exception as e:
                 print(f"[Cat A Auto-Launcher Error] Failed to launch worker for app {app.id}: {e}")
 
+            # 2-second stagger between each thread ignition to let Windows paint each window
+            time.sleep(2.0)
+
         slot_checker_state["status"] = f"Auto-launching Category A automation: {launched_count}/{total} applications started..."
         print(f"[Cat A Auto-Launcher] Launched batch of {len(batch)} applications ({launched_count}/{total} total).")
 
         if i + batch_size < total:
-            print("[Cat A Auto-Launcher] Pausing 10 seconds before next batch...")
-            time.sleep(10)
+            print("[Cat A Auto-Launcher] Pausing 30 seconds before next batch...")
+            time.sleep(30)
 
     slot_checker_state["status"] = f"Auto-launch complete! Successfully launched {launched_count} Category A applications."
     print(f"[Cat A Auto-Launcher] Completed launching {launched_count} applications.")
@@ -238,6 +378,10 @@ def _slot_checker_loop():
                 # Pass booking_record=app & is_slot_checker=True so identity & navigation read fields natively while DB write operations are 100% blocked
                 engine = IremboAutomationEngine(booking_record=app, is_slot_checker=True)
 
+                # Monkeypatch engine._get_time_options & _select_time_slot_by_index locally to guard against unhandled 3000ms timeouts
+                engine._get_time_options = lambda: _safe_get_time_options(engine)
+                engine._select_time_slot_by_index = lambda idx: _safe_select_time_slot_by_index(engine, idx)
+
                 # HEADLESS = TRUE for 100% invisible background running
                 engine.initialize_stealth_browser(p, headless=True)
                 
@@ -269,7 +413,7 @@ def _slot_checker_loop():
                 time.sleep(2)
 
                 # Check time options and slots (Loop through time schedules exactly ONCE, not twice)
-                time_options = engine._get_time_options()
+                time_options = _safe_get_time_options(engine)
                 if not time_options:
                     # Check current page just in case
                     found, details = _check_slots_on_page(engine)
@@ -285,7 +429,7 @@ def _slot_checker_loop():
                         slot_checker_state["status"] = f"Checking schedule {idx+1}/{len(time_options)} ({time_label})..."
                         print(f"[Cat A Slot Checker] Selecting schedule {idx+1}/{len(time_options)}: {time_label}")
                         
-                        engine._select_time_slot_by_index(idx)
+                        _safe_select_time_slot_by_index(engine, idx)
                         # Wait 2 seconds for Angular to fetch and render center availability for this time schedule
                         time.sleep(2)
                         
@@ -319,9 +463,10 @@ def _slot_checker_loop():
         except Exception as e:
             err_msg = str(e)
             print(f"[Cat A Slot Checker Warning] Attempt with applicant {app.national_id} failed: {err_msg}")
-            # Track failed candidate ID so slot_checker immediately switches to another applicant on retry
-            recently_failed_ids.add(app.id)
-            slot_checker_state["status"] = f"Portal issue with {app.first_name}: {err_msg[:40]}... Retrying with another applicant."
+            # Do not blacklist applicant for transient network/portal timeouts
+            if "timeout" not in err_msg.lower():
+                recently_failed_ids.add(app.id)
+            slot_checker_state["status"] = f"Portal issue with {app.first_name}: {err_msg[:40]}... Retrying."
             # Wait 15s before retrying with another applicant
             for _ in range(15):
                 if not slot_checker_state["is_running"]:
