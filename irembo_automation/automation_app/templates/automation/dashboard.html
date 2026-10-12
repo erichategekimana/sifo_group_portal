@@ -813,6 +813,9 @@
                             if (currentText !== finalBadgeText) {
                                 badge.innerText = finalBadgeText;
                             }
+                            if (item.last_error) {
+                                badge.title = item.last_error;
+                            }
                             badge.className = `px-2.5 py-1 rounded-full text-xs font-medium ${statusInfo.classes}`;
                         }
 

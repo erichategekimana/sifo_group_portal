@@ -18,6 +18,11 @@ class ErrorDetectionMixin:
         ("ntabwo wemerewe iyi serivisi", "NTABWO_WEMEREWE"),
         ("bileyi nomero", "BILEYI_IRAKORESHEJWE"),
         ("ntabwo mufite uburenganzira", "NTA_BURENGANZIRA"),
+        ("ntibaruye ku indangamuntu", "TELEFONE_NTIBARUYE_KURI_ID"),
+        ("ntibaruye ku ndangamuntu", "TELEFONE_NTIBARUYE_KURI_ID"),
+        ("wanditse ntibaruye", "TELEFONE_NTIBARUYE_KURI_ID"),
+        ("nimero ya telefone wanditse ntibaruye", "TELEFONE_NTIBARUYE_KURI_ID"),
+        ("nomero ya telefone wanditse ntibaruye", "TELEFONE_NTIBARUYE_KURI_ID"),
     ]
 
     # Whitelist of informational announcements, service updates, or form validation placeholders to ignore
