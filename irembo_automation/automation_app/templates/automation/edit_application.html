@@ -42,6 +42,10 @@
                             <input type="text" name="phone_number" value="{{ app.phone_number }}" pattern="07[2389]\d{7}" maxlength="10" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-2">Secondary Phone (Optional)</label>
+                            <input type="text" name="secondary_phone" value="{{ app.secondary_phone|default:'' }}" pattern="07[2389]\d{7}" maxlength="10" placeholder="0788123456" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-slate-300 mb-2">Birth Date</label>
                             <input type="date" name="birth_date" value="{{ app.birth_date|date:'Y-m-d' }}" class="w-full bg-slate-700 border border-slate-600 text-slate-100 px-4 py-2 rounded focus:outline-none focus:border-emerald-500">
                         </div>

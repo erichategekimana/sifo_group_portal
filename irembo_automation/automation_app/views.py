@@ -291,6 +291,7 @@ def dashboard(request):
             Q(last_name__icontains=query) |
             Q(national_id__icontains=query) |
             Q(phone_number__icontains=query) |
+            Q(secondary_phone__icontains=query) |
             Q(email__icontains=query) |
             Q(billing_number__icontains=query) |
             Q(district__icontains=query) |
@@ -422,6 +423,7 @@ def archived_dashboard(request):
             Q(last_name__icontains=query) |
             Q(national_id__icontains=query) |
             Q(phone_number__icontains=query) |
+            Q(secondary_phone__icontains=query) |
             Q(email__icontains=query) |
             Q(billing_number__icontains=query) |
             Q(district__icontains=query) |
@@ -549,6 +551,7 @@ def create_application(request):
                 national_id=request.POST.get('national_id'),
                 birth_date=request.POST.get('birth_date'),
                 phone_number=request.POST.get('phone_number'),
+                secondary_phone=request.POST.get('secondary_phone', '') or None,
                 email=request.POST.get('email', ''),
                 category=request.POST.get('category'),
                 provisional_number=request.POST.get('provisional_number', ''),
@@ -598,6 +601,8 @@ def edit_application(request, application_id):
             app.national_id = request.POST.get('national_id', app.national_id)
             app.birth_date = request.POST.get('birth_date', app.birth_date)
             app.phone_number = request.POST.get('phone_number', app.phone_number)
+            sec_phone = request.POST.get('secondary_phone', '')
+            app.secondary_phone = sec_phone if sec_phone else None
             app.provisional_number = request.POST.get('provisional_number', app.provisional_number)
             app.billing_number = request.POST.get('billing_number', app.billing_number)
             app.application_number = request.POST.get('application_number', app.application_number)
@@ -1165,6 +1170,7 @@ def export_applications(request):
             Q(last_name__icontains=query) |
             Q(national_id__icontains=query) |
             Q(phone_number__icontains=query) |
+            Q(secondary_phone__icontains=query) |
             Q(email__icontains=query) |
             Q(billing_number__icontains=query) |
             Q(district__icontains=query) |

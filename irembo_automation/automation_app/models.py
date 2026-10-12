@@ -64,6 +64,13 @@ class ClientApplication(models.Model):
         validators=[rwanda_phone_validator],
         help_text="Primary phone linked to Irembo profile"
     )
+    secondary_phone = models.CharField(
+        max_length=15,
+        validators=[rwanda_phone_validator],
+        blank=True,
+        null=True,
+        help_text="Optional secondary phone number"
+    )
     email = models.EmailField(blank=True, null=True)
     
     # -----------------------------------------------------------------------

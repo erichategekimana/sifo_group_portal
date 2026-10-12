@@ -37,7 +37,7 @@ class ClientApplicationAdmin(admin.ModelAdmin):
     list_filter = ('status', 'payment_status', 'category', 'created_at')
     
     # Global text query parameters mapping to your exact database indexes
-    search_fields = ('national_id', 'phone_number', 'first_name', 'last_name', 'billing_number', 'provisional_number')
+    search_fields = ('national_id', 'phone_number', 'secondary_phone', 'first_name', 'last_name', 'billing_number', 'provisional_number')
     
     # Security blockages: Protect read-only metadata tracking rows
     readonly_fields = ('created_at', 'updated_at')
@@ -123,7 +123,7 @@ class ClientApplicationAdmin(admin.ModelAdmin):
             'description': 'Data inputted below must strictly match the applicant’s official identification document context.'
         }),
         ('Contact Gateway & Target Requirements', {
-            'fields': ('phone_number', 'email', 'category', 'provisional_number')
+            'fields': ('phone_number', 'secondary_phone', 'email', 'category', 'provisional_number')
         }),
         ('Automation State Tracking Terminal', {
             'fields': ('status', 'payment_status', 'billing_number', 'application_number'),
