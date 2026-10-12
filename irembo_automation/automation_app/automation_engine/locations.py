@@ -66,11 +66,11 @@ class KicukiroLocationStrategy(LocationStrategy):
         if self.is_manual_site():
             # Manual site requires 'SITE (KIC)' or 'BUSANZA SITE', and must NOT be the automated center
             is_manual = "SITE (KIC)" in center_upper or "BUSANZA SITE" in center_upper
-            is_auto = "AUTOMATED" in center_upper or "AUTOMATIQUE" in center_upper
+            is_auto = "AUTOMATED" in center_upper or "AUTOMATIQUE" in center_upper or "AUTOMATIS" in center_upper
             return is_manual and not is_auto
         else:
             # Default / Automated center: requires 'AUTOMATED' or 'AUTOMATIQUE' and excludes the manual site
-            is_auto = "AUTOMATED" in center_upper or "AUTOMATIQUE" in center_upper
+            is_auto = "AUTOMATED" in center_upper or "AUTOMATIQUE" in center_upper or "AUTOMATIS" in center_upper
             is_manual = "SITE (KIC)" in center_upper or "BUSANZA SITE" in center_upper
             return is_auto and not is_manual
 

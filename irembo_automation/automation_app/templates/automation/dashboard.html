@@ -64,29 +64,36 @@
 
     </header>
 
-    <!-- Category A Background Slot Checker Banner -->
-    <div class="w-full mb-8 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 rounded-2xl p-5 shadow-2xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-            <div id="cat-a-status-dot" class="w-4 h-4 rounded-full bg-slate-500 shrink-0 shadow-[0_0_10px_rgba(148,163,184,0.5)]"></div>
-            <div>
-                <div class="flex items-center gap-2">
-                    <h2 class="text-lg font-bold tracking-wide text-indigo-300">Category A Background Slot Checker</h2>
-                    <span id="cat-a-badge" class="px-2 py-0.5 rounded text-[11px] font-extrabold uppercase bg-slate-800 text-slate-300 border border-slate-700">STOPPED</span>
+    <!-- Multi-Category & Multi-Site Slot Checker Command Center -->
+    <div class="w-full mb-8 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 rounded-2xl p-5 shadow-2xl text-white">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div id="slot-checker-status-dot" class="w-4 h-4 rounded-full bg-slate-500 shrink-0 shadow-[0_0_10px_rgba(148,163,184,0.5)]"></div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg font-bold tracking-wide text-indigo-300">Background Slot Checker Center</h2>
+                        <span id="slot-checker-badge" class="px-2 py-0.5 rounded text-[11px] font-extrabold uppercase bg-slate-800 text-slate-300 border border-slate-700">IDLE</span>
+                    </div>
+                    <p id="slot-checker-status-text" class="text-xs text-slate-300 mt-1 font-medium">No active checkers running. Click '+ New Checker' to monitor any category & site in Kicukiro.</p>
                 </div>
-                <p id="cat-a-status-text" class="text-xs text-slate-300 mt-1 font-medium">Status: Idle. Click 'Start A-Checker' to begin automatic 1–3 min background checking.</p>
+            </div>
+            <div class="flex items-center gap-5 text-xs text-slate-300 font-mono">
+                <div>Total Checks: <span id="slot-checker-count" class="font-bold text-white">0</span></div>
+                <div>Last Check: <span id="slot-checker-last" class="font-bold text-white">—</span></div>
+                <div class="flex gap-2">
+                    <button type="button" id="btn-open-checker-modal" onclick="openSlotCheckerModal()" class="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5">
+                        <span>🚀</span> + New Checker
+                    </button>
+                    <button type="button" id="btn-stop-all-checkers" onclick="stopSlotChecker('all')" class="bg-rose-600/80 hover:bg-rose-600 text-white font-bold px-3 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5 hidden">
+                        Stop All
+                    </button>
+                </div>
             </div>
         </div>
-        <div class="flex items-center gap-6 text-xs text-slate-300 font-mono">
-            <div>Checks: <span id="cat-a-count" class="font-bold text-white">0</span></div>
-            <div>Last: <span id="cat-a-last" class="font-bold text-white">—</span></div>
-            <div class="flex gap-2">
-                <button type="button" id="btn-start-cat-a" onclick="openCatAConfigModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5">
-                    ⚙ Start A-Checker
-                </button>
-                <button type="button" id="btn-stop-cat-a" onclick="controlCatAChecker('stop')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg transition-all cursor-pointer flex items-center gap-1.5 hidden">
-                    Stop
-                </button>
-            </div>
+
+        <!-- Dynamic Live Active Workers Grid -->
+        <div id="slot-checker-workers-grid" class="mt-4 pt-4 border-t border-slate-800/80 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 hidden">
+            <!-- Dynamically populated worker cards -->
         </div>
     </div>
 
@@ -122,6 +129,17 @@
                             <option value="">All Payments</option>
                             {% for value, label in payment_choices %}
                                 <option value="{{ value }}" {% if payment_filter == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Category Filter -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Category</label>
+                        <select name="category" class="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500 dark:[color-scheme:dark]">
+                            <option value="" class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">All Categories</option>
+                            {% for cat in categories %}
+                                <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">Category {{ cat }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -176,6 +194,20 @@
                             <option value="status" {% if sort_by == 'status' %}selected{% endif %}>Status</option>
                         </select>
                     </div>
+
+                    <!-- Show on Screen (Per Page) -->
+                    <div>
+                        <label class="block text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">Show on Screen</label>
+                        <select name="per_page" onchange="this.form.submit()" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 px-3 py-2 rounded text-sm focus:outline-none focus:border-emerald-500 font-medium dark:[color-scheme:dark]">
+                            <option value="10" {% if per_page == '10' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">10 Applications</option>
+                            <option value="15" {% if per_page == '15' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">15 Applications</option>
+                            <option value="20" {% if per_page == '20' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">20 Applications</option>
+                            <option value="25" {% if per_page == '25' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">25 Applications</option>
+                            <option value="40" {% if per_page == '40' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">40 Applications</option>
+                            <option value="60" {% if per_page == '60' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">60 Applications</option>
+                            <option value="all" {% if per_page == 'all' %}selected{% endif %} class="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">All Applications (No Limit)</option>
+                        </select>
+                    </div>
                     
                     <!-- Search Button -->
                     <div class="pt-2">
@@ -184,7 +216,7 @@
                         </button>
                     </div>
 
-                    {% if query or status_filter or payment_filter or teacher_filter or date_from or date_to %}
+                    {% if query or status_filter or payment_filter or teacher_filter or category_filter or priority_filter or date_from or date_to %}
                     <div class="pt-1 text-center">
                         <a href="{% url 'dashboard' %}?reset=1" class="text-xs text-rose-400 hover:text-rose-300 underline font-medium">
                             ✕ Clear All Filters
@@ -194,7 +226,7 @@
 
                     <!-- Export Button -->
                     <div class="pt-2">
-                        <a href="{% url 'export_applications' %}?q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&teacher={{ teacher_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}" 
+                        <a href="{% url 'export_applications' %}?q={{ query }}&status={{ status_filter }}&payment={{ payment_filter }}&teacher={{ teacher_filter }}&category={{ category_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}" 
                            class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded transition-all text-sm shadow-lg inline-flex items-center justify-center gap-1.5 cursor-pointer">
                             📥 Export Excel (Filtered)
                         </a>
@@ -270,9 +302,24 @@
                 <button type="button" onclick="performAction('delete')" class="bg-red-600 hover:bg-red-500 text-white text-xs font-medium px-3 py-2 rounded transition-all">
                     🗑 Delete Selected
                 </button>
-                <button type="button" onclick="terminateAllRunning()" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded transition-all shadow-md ml-auto flex items-center gap-1.5 cursor-pointer" title="Terminate all running and processing applications immediately">
-                    🛑 Terminate All Running
-                </button>
+                <div class="ml-auto flex items-center gap-3">
+                    <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 rounded-lg shadow-xs">
+                        <span class="text-slate-500 dark:text-slate-400">Show:</span>
+                        <select onchange="changePerPage(this.value)" class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 px-2 py-0.5 rounded text-xs font-bold focus:outline-none focus:border-emerald-500 dark:[color-scheme:dark] cursor-pointer">
+                            <option value="10" {% if per_page == '10' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">10</option>
+                            <option value="15" {% if per_page == '15' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">15</option>
+                            <option value="20" {% if per_page == '20' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">20</option>
+                            <option value="25" {% if per_page == '25' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">25</option>
+                            <option value="40" {% if per_page == '40' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">40</option>
+                            <option value="60" {% if per_page == '60' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">60</option>
+                            <option value="all" {% if per_page == 'all' %}selected{% endif %} class="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">All</option>
+                        </select>
+                        <span class="text-slate-500 dark:text-slate-400">apps</span>
+                    </div>
+                    <button type="button" onclick="terminateAllRunning()" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded transition-all shadow-md flex items-center gap-1.5 cursor-pointer" title="Terminate all running and processing applications immediately">
+                        🛑 Terminate All Running
+                    </button>
+                </div>
                 <input type="hidden" name="action" id="bulk-action-input">
             </div>
 
@@ -383,13 +430,52 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="8" class="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
+                            <td colspan="10" class="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
                                 No applications found. <a href="{% url 'create_application' %}" class="text-emerald-600 dark:text-emerald-400 hover:text-emerald-300 font-semibold">Create one now →</a>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+
+                <!-- Table Pagination Footer -->
+                {% if is_paginated %}
+                <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <div class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        Showing <span class="font-bold text-slate-800 dark:text-slate-200">{{ page_obj.start_index }}</span>
+                        to <span class="font-bold text-slate-800 dark:text-slate-200">{{ page_obj.end_index }}</span>
+                        of <span class="font-bold text-slate-800 dark:text-slate-200">{{ total_matching_count }}</span> applications
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        {% if page_obj.has_previous %}
+                            <button type="button" onclick="goToPage({{ page_obj.previous_page_number }})"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 transition-all cursor-pointer shadow-xs">
+                                ← Previous
+                            </button>
+                        {% else %}
+                            <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-600 border border-slate-200 dark:border-slate-800 cursor-not-allowed">
+                                ← Previous
+                            </span>
+                        {% endif %}
+
+                        <span class="px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                        </span>
+
+                        {% if page_obj.has_next %}
+                            <button type="button" onclick="goToPage({{ page_obj.next_page_number }})"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 transition-all cursor-pointer shadow-xs">
+                                Next →
+                            </button>
+                        {% else %}
+                            <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-900 text-slate-400 dark:text-slate-600 border border-slate-200 dark:border-slate-800 cursor-not-allowed">
+                                Next →
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </form>
         </div>
@@ -451,25 +537,79 @@
         </div>
     </div>
 
-    <!-- Category A Slot Checker Configuration Modal -->
-    <div id="cat-a-config-modal" class="fixed inset-0 flex items-center justify-center p-4 z-[75] hidden bg-black/80 backdrop-blur-md transition-all">
-        <div class="bg-slate-900 border-2 border-indigo-500/60 rounded-3xl max-w-xl w-full p-6 shadow-2xl text-white relative">
+    <!-- Dynamic Slot Checker Configuration Modal -->
+    <div id="slot-checker-config-modal" class="fixed inset-0 flex items-center justify-center p-4 z-[75] hidden bg-black/80 backdrop-blur-md transition-all">
+        <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-indigo-500/50 rounded-3xl max-w-xl w-full p-6 shadow-[0_0_50px_rgba(99,102,241,0.25)] text-slate-100 max-h-[92vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
                 <div class="flex items-center gap-3">
                     <span class="text-2xl">⚙️</span>
                     <div>
-                        <h2 class="text-xl font-bold tracking-wide text-indigo-300">Configure a slot checker</h2>
+                        <h2 class="text-xl font-bold tracking-wide text-indigo-300">Launch Background Slot Checker</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Select category and site to monitor. Runs independently without stopping existing workers.</p>
                     </div>
                 </div>
-                <button type="button" onclick="closeCatAConfigModal()" class="text-slate-400 hover:text-white text-xl p-1 font-bold cursor-pointer">✕</button>
+                <button type="button" onclick="closeSlotCheckerModal()" class="text-slate-400 hover:text-white text-xl p-1 font-bold cursor-pointer">✕</button>
             </div>
 
-            <!-- Option 1: Batch Size Selection -->
+            <!-- Option 1: Driving License Category Selection -->
             <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
-                <label for="cat-a-batch-size-input" class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-2.5">
-                    1. Application Batch Launch Size
+                <label for="slot-checker-category" class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-2">
+                    1. Target License Category
                 </label>
-                <select id="cat-a-batch-size-input" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
+                <div class="grid grid-cols-4 gap-2 mb-2.5">
+                    <button type="button" onclick="selectCategoryBtn('A')" id="cat-btn-A" class="cat-pill py-2 rounded-xl text-xs font-bold border border-indigo-500 bg-indigo-600/30 text-indigo-300 transition-all cursor-pointer">Cat A (Moto)</button>
+                    <button type="button" onclick="selectCategoryBtn('B')" id="cat-btn-B" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat B (Car)</button>
+                    <button type="button" onclick="selectCategoryBtn('B2')" id="cat-btn-B2" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat B2</button>
+                    <button type="button" onclick="selectCategoryBtn('C')" id="cat-btn-C" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat C (Truck)</button>
+                    <button type="button" onclick="selectCategoryBtn('C1')" id="cat-btn-C1" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat C1</button>
+                    <button type="button" onclick="selectCategoryBtn('D')" id="cat-btn-D" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat D (Bus)</button>
+                    <button type="button" onclick="selectCategoryBtn('E')" id="cat-btn-E" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Cat E (Trailer)</button>
+                    <button type="button" onclick="selectCategoryBtn('custom')" id="cat-btn-custom" class="cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer">Other...</button>
+                </div>
+                <input type="text" id="slot-checker-category" value="A" placeholder="Category (e.g. A, B, C, D)"
+                    class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-bold px-3 py-2.5 rounded-xl uppercase focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <!-- Option 2: Target Centers / Sites Selection (District is Kicukiro) -->
+            <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                <label class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-1.5">
+                    2. Target Sites in Kicukiro (Simultaneous Workers)
+                </label>
+                <p class="text-xs text-slate-400 mb-3">Select one or both centers to monitor concurrently:</p>
+                
+                <div class="space-y-2.5">
+                    <label class="flex items-start gap-3 p-3 bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-xl cursor-pointer transition-all">
+                        <input type="checkbox" id="checker-target-automated" value="automated" checked
+                            class="w-4 h-4 mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-950 cursor-pointer">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-slate-200">Busanza Automated Center</span>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Automated</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Monitors BUSANZA AUTOMATED CENTER. If slots open, auto-launches automated applicants.</p>
+                        </div>
+                    </label>
+
+                    <label class="flex items-start gap-3 p-3 bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-xl cursor-pointer transition-all">
+                        <input type="checkbox" id="checker-target-manual" value="manual" checked
+                            class="w-4 h-4 mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-950 cursor-pointer">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-slate-200">Busanza Site (Manual - KIC)</span>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">Manual Site</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Monitors KICUKIRO - BUSANZA SITE (KIC). If slots open, strictly auto-launches applicants for this site.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Option 3: Batch Size Selection -->
+            <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
+                <label for="slot-checker-batch-size" class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-2.5">
+                    3. Application Batch Launch Size
+                </label>
+                <select id="slot-checker-batch-size" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
                     <option value="3">3 Applications</option>
                     <option value="5">5 Applications</option>
                     <option value="8">8 Applications</option>
@@ -483,13 +623,13 @@
                 </select>
             </div>
 
-            <!-- Option 2: Execution Sort Order -->
+            <!-- Option 4: Execution Sort Order -->
             <div class="mb-5 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
                 <label class="block text-xs font-bold uppercase text-indigo-400 tracking-wider mb-1.5">
-                    2. Execution Sort Order
+                    4. Execution Sort Order
                 </label>
-                <p class="text-xs text-slate-400 mb-2.5">Choose which applications get processed first when automation starts:</p>
-                <select id="cat-a-sort-by" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
+                <p class="text-xs text-slate-400 mb-2.5">Choose which applications get processed first upon slot detection:</p>
+                <select id="slot-checker-sort-by" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl focus:outline-none focus:border-indigo-500">
                     <option value="created_at" selected>📅 Oldest First (Registered First)</option>
                     <option value="-created_at">📅 Newest First (Recently Added)</option>
                     <option value="teacher">🎓 By Teacher (Group by Teacher Name)</option>
@@ -498,14 +638,14 @@
                 </select>
             </div>
 
-            <!-- Option 3: Priority Applications Preference -->
+            <!-- Option 5: Priority Applications Preference -->
             <div class="mb-6 bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
                 <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
-                        <input type="checkbox" id="cat-a-use-priority" checked 
+                        <input type="checkbox" id="slot-checker-use-priority" checked 
                             class="w-5 h-5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900 cursor-pointer">
-                        <label for="cat-a-use-priority" class="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
-                            ⭐ Prioritize Marked Applications
+                        <label for="slot-checker-use-priority" class="text-sm font-bold text-slate-200 cursor-pointer flex items-center gap-2">
+                            ⭐ Prioritize Marked Applications First
                             <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
                                 {{ priority_count }} currently marked
                             </span>
@@ -516,35 +656,56 @@
 
             <!-- Modal Action Buttons -->
             <div class="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onclick="closeCatAConfigModal()" 
+                <button type="button" onclick="closeSlotCheckerModal()" 
                     class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
                     Cancel
                 </button>
-                <button type="button" onclick="confirmStartCatAChecker()" 
+                <button type="button" onclick="confirmStartSlotChecker()" 
                     class="px-6 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all cursor-pointer flex items-center gap-2">
                     <span>🚀</span> Start Checking Now
                 </button>
             </div>
         </div>
     </div>
-    <div id="cat-a-alarm-modal" class="fixed inset-0 flex items-center justify-center p-6 z-[70] hidden bg-black/80 backdrop-blur-md transition-all">
+
+    <!-- Slot Alarm Modal -->
+    <div id="slot-checker-alarm-modal" class="fixed inset-0 flex items-center justify-center p-6 z-[70] hidden bg-black/80 backdrop-blur-md transition-all">
         <div class="bg-gradient-to-b from-rose-950 to-slate-900 border-4 border-rose-500 rounded-3xl max-w-2xl w-full p-8 shadow-[0_0_50px_rgba(244,63,94,0.6)] text-center relative animate-bounce">
             <div class="text-2xl font-black text-rose-500 mb-2 tracking-widest uppercase">[ ALERT ]</div>
-            <h2 class="text-3xl font-black text-rose-400 tracking-wider uppercase mb-2">CATEGORY A SLOTS DETECTED!</h2>
-            <p class="text-lg text-white font-medium mb-6">Available driving test slots have been found on Irembo for Category A!</p>
+            <h2 id="slot-checker-alarm-title" class="text-3xl font-black text-rose-400 tracking-wider uppercase mb-2">DRIVING TEST SLOTS DETECTED!</h2>
+            <p class="text-lg text-white font-medium mb-6">Available driving test seats have been found on Irembo!</p>
             
             <div class="bg-slate-950/80 border border-rose-800/50 rounded-2xl p-5 mb-8 text-left font-mono text-sm text-rose-200 shadow-inner">
                 <div class="text-xs text-rose-400 font-bold uppercase mb-1">Detection Details:</div>
-                <div id="cat-a-alarm-details" class="text-base text-white font-bold">Scanning...</div>
+                <div id="slot-checker-alarm-details" class="text-base text-white font-bold">Scanning...</div>
             </div>
 
-            <button type="button" onclick="acknowledgeCatAAlarm()" class="w-full bg-gradient-to-r from-rose-600 via-red-500 to-rose-600 hover:from-rose-500 hover:to-red-400 text-white font-black text-lg py-4 rounded-2xl shadow-[0_0_25px_rgba(244,63,94,0.8)] transition-all cursor-pointer uppercase tracking-widest">
-                Acknowledge & Stop Alarm
-            </button>
+            <div class="flex flex-col sm:flex-row items-center gap-3">
+                <button type="button" onclick="acknowledgeSlotAlarm(true)" class="flex-1 w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-black text-base py-4 rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.8)] transition-all cursor-pointer uppercase tracking-wider flex items-center justify-center gap-2">
+                    <span>🚀</span> Launch Applications Now!
+                </button>
+                <button type="button" onclick="acknowledgeSlotAlarm(false)" class="w-full sm:w-auto px-6 py-4 rounded-2xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer">
+                    Dismiss (Do Not Launch)
+                </button>
+            </div>
         </div>
     </div>
 
     <script>
+        // Page Size and Navigation Handlers
+        function changePerPage(val) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', val);
+            url.searchParams.set('page', '1');
+            window.location.href = url.toString();
+        }
+
+        function goToPage(pageNum) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('page', pageNum);
+            window.location.href = url.toString();
+        }
+
         // Select All Checkbox
         document.getElementById('select-all').addEventListener('change', function() {
             const checkboxes = document.querySelectorAll('.app-checkbox');
@@ -979,34 +1140,55 @@
             }
         }
 
-        // --- Category A Modal Handlers ---
-        function openCatAConfigModal() {
-            const modal = document.getElementById('cat-a-config-modal');
+        // --- Multi-Category Slot Checker Handlers ---
+        function openSlotCheckerModal() {
+            const modal = document.getElementById('slot-checker-config-modal');
             if (modal) modal.classList.remove('hidden');
         }
 
-        function closeCatAConfigModal() {
-            const modal = document.getElementById('cat-a-config-modal');
+        function closeSlotCheckerModal() {
+            const modal = document.getElementById('slot-checker-config-modal');
             if (modal) modal.classList.add('hidden');
         }
 
-        function selectBatchPill(size) {
-            document.getElementById('cat-a-batch-size-input').value = size;
-            document.querySelectorAll('.batch-pill').forEach(pill => {
-                pill.className = 'batch-pill px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 hover:border-indigo-500 transition-all';
+        function selectCategoryBtn(cat) {
+            const input = document.getElementById('slot-checker-category');
+            if (cat === 'custom') {
+                input.value = '';
+                input.focus();
+            } else {
+                input.value = cat;
+            }
+            document.querySelectorAll('.cat-pill').forEach(btn => {
+                btn.className = 'cat-pill py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 transition-all cursor-pointer';
             });
-            const selectedPill = document.getElementById(`batch-pill-${size}`);
-            if (selectedPill) {
-                selectedPill.className = 'batch-pill px-4 py-2 rounded-xl text-xs font-bold border border-indigo-500 bg-indigo-600/30 text-indigo-300 hover:border-indigo-400 transition-all';
+            const selectedBtn = document.getElementById(`cat-btn-${cat}`);
+            if (selectedBtn) {
+                selectedBtn.className = 'cat-pill py-2 rounded-xl text-xs font-bold border border-indigo-500 bg-indigo-600/30 text-indigo-300 transition-all cursor-pointer';
             }
         }
 
-        function confirmStartCatAChecker() {
-            const batchSize = parseInt(document.getElementById('cat-a-batch-size-input').value) || 10;
-            const usePriority = document.getElementById('cat-a-use-priority').checked;
-            const sortBy = document.getElementById('cat-a-sort-by').value || 'created_at';
+        function confirmStartSlotChecker() {
+            const category = (document.getElementById('slot-checker-category')?.value || 'A').trim().toUpperCase();
+            if (!category) {
+                alert("Please select or specify a category (e.g. A, B, C, D).");
+                return;
+            }
 
-            closeCatAConfigModal();
+            const targets = [];
+            if (document.getElementById('checker-target-automated')?.checked) targets.push('automated');
+            if (document.getElementById('checker-target-manual')?.checked) targets.push('manual');
+
+            if (targets.length === 0) {
+                alert("Please select at least one site in Kicukiro to monitor.");
+                return;
+            }
+
+            const batchSize = parseInt(document.getElementById('slot-checker-batch-size')?.value) || 10;
+            const usePriority = document.getElementById('slot-checker-use-priority')?.checked ?? true;
+            const sortBy = document.getElementById('slot-checker-sort-by')?.value || 'created_at';
+
+            closeSlotCheckerModal();
 
             fetch('/api/slot-checker/start/', {
                 method: 'POST',
@@ -1015,9 +1197,11 @@
                     'X-CSRFToken': '{{ csrf_token }}'
                 },
                 body: JSON.stringify({
+                    category: category,
                     batch_size: batchSize,
                     use_priority: usePriority,
-                    sort_by: sortBy
+                    sort_by: sortBy,
+                    targets: targets
                 })
             })
             .then(res => res.json())
@@ -1025,89 +1209,149 @@
                 if (data.status !== 'success') {
                     alert(data.message);
                 }
-                updateCatAStatus();
+                updateSlotCheckerStatus();
             })
             .catch(err => {
-                console.error("Cat A Checker start error:", err);
+                console.error("Slot Checker start error:", err);
                 alert("Failed to start slot checker. Please try again.");
             });
         }
 
-        function controlCatAChecker(action) {
-            if (action === 'start') {
-                openCatAConfigModal();
-                return;
+        function stopSlotChecker(target) {
+            let payload = {};
+            if (target === 'all' || !target) {
+                payload = {};
+            } else if (target.includes('_')) {
+                payload = { checker_id: target };
+            } else {
+                payload = { category: target };
             }
 
-            fetch(`/api/slot-checker/${action}/`, {
+            fetch('/api/slot-checker/stop/', {
                 method: 'POST',
-                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
             })
             .then(res => res.json())
             .then(data => {
                 if (data.status !== 'success') {
                     alert(data.message);
                 }
-                updateCatAStatus();
+                updateSlotCheckerStatus();
             })
-            .catch(err => console.error("Cat A Checker error:", err));
+            .catch(err => console.error("Slot checker stop error:", err));
         }
 
-        function acknowledgeCatAAlarm() {
+        function acknowledgeSlotAlarm(triggerLaunch = true) {
+            if (catAAlarmInterval) {
+                clearInterval(catAAlarmInterval);
+                catAAlarmInterval = null;
+            }
+            isCatAAlarmRinging = false;
+            const modal = document.getElementById('slot-checker-alarm-modal');
+            if (modal) modal.classList.add('hidden');
+
             fetch('/api/slot-checker/ack/', {
                 method: 'POST',
-                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ trigger_launch: triggerLaunch })
             })
             .then(res => res.json())
             .then(data => {
-                if (catAAlarmInterval) {
-                    clearInterval(catAAlarmInterval);
-                    catAAlarmInterval = null;
-                }
-                isCatAAlarmRinging = false;
-                const modal = document.getElementById('cat-a-alarm-modal');
-                if (modal) modal.classList.add('hidden');
-                updateCatAStatus();
-            });
+                updateSlotCheckerStatus();
+            })
+            .catch(err => console.error("Slot checker acknowledge error:", err));
         }
 
-        function updateCatAStatus() {
+        function updateSlotCheckerStatus() {
             fetch('/api/slot-checker/status/')
                 .then(res => res.json())
                 .then(data => {
-                    const dot = document.getElementById('cat-a-status-dot');
-                    const badge = document.getElementById('cat-a-badge');
-                    const text = document.getElementById('cat-a-status-text');
-                    const count = document.getElementById('cat-a-count');
-                    const last = document.getElementById('cat-a-last');
-                    const startBtn = document.getElementById('btn-start-cat-a');
-                    const stopBtn = document.getElementById('btn-stop-cat-a');
+                    const dot = document.getElementById('slot-checker-status-dot');
+                    const badge = document.getElementById('slot-checker-badge');
+                    const text = document.getElementById('slot-checker-status-text');
+                    const count = document.getElementById('slot-checker-count');
+                    const last = document.getElementById('slot-checker-last');
+                    const stopAllBtn = document.getElementById('btn-stop-all-checkers');
+                    const workersGrid = document.getElementById('slot-checker-workers-grid');
 
                     if (!dot) return;
 
                     count.innerText = data.check_count || '0';
                     last.innerText = data.last_check || '—';
-                    text.innerText = `Status: ${data.status || 'Idle'}`;
 
-                    if (data.is_running) {
-                        badge.innerText = 'RUNNING';
+                    if (data.is_running && data.workers && data.workers.length > 0) {
+                        badge.innerText = `${data.workers.length} RUNNING`;
                         badge.className = 'px-2 py-0.5 rounded text-[11px] font-extrabold uppercase bg-emerald-950 text-emerald-400 border border-emerald-600 animate-pulse';
                         dot.className = 'w-4 h-4 rounded-full bg-emerald-500 animate-ping shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.8)]';
-                        startBtn.classList.add('hidden');
-                        stopBtn.classList.remove('hidden');
+                        text.innerText = `Active: ${data.workers.length} background worker(s) polling Irembo concurrently.`;
+                        if (stopAllBtn) stopAllBtn.classList.remove('hidden');
+
+                        if (workersGrid) {
+                            let cardsHtml = '';
+                            data.workers.forEach(w => {
+                                cardsHtml += `
+                                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between shadow-lg">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="px-2 py-0.5 rounded text-xs font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                                CAT ${w.category}
+                                            </span>
+                                            <span class="text-xs font-bold text-white truncate max-w-[170px]" title="${w.site_name}">${w.site_name}</span>
+                                        </div>
+                                        <button type="button" onclick="stopSlotChecker('${w.id}')"
+                                            class="px-2.5 py-1 rounded-md text-[10px] font-bold bg-rose-600/80 hover:bg-rose-500 text-white transition-all cursor-pointer shadow-sm">
+                                            Stop
+                                        </button>
+                                    </div>
+                                    <div class="mt-2.5 space-y-1 text-[11px] text-slate-300 font-mono">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-slate-400">Status:</span>
+                                            <span class="text-emerald-400 font-medium truncate max-w-[180px]">${w.status}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-slate-400">Checks:</span>
+                                            <span class="text-white font-bold">${w.check_count}</span>
+                                        </div>
+                                        ${w.current_candidate ? `
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-slate-400">Applicant:</span>
+                                            <span class="text-slate-200 truncate max-w-[180px]">${w.current_candidate}</span>
+                                        </div>` : ''}
+                                    </div>
+                                </div>`;
+                            });
+                            workersGrid.innerHTML = cardsHtml;
+                            workersGrid.classList.remove('hidden');
+                        }
                     } else {
-                        badge.innerText = 'STOPPED';
+                        badge.innerText = 'IDLE';
                         badge.className = 'px-2 py-0.5 rounded text-[11px] font-extrabold uppercase bg-slate-800 text-slate-300 border border-slate-700';
                         dot.className = 'w-4 h-4 rounded-full bg-slate-500 shrink-0 shadow-[0_0_10px_rgba(148,163,184,0.5)]';
-                        startBtn.classList.remove('hidden');
-                        stopBtn.classList.add('hidden');
+                        text.innerText = 'No active checkers running. Click \'+ New Checker\' to monitor any category & site in Kicukiro.';
+                        if (stopAllBtn) stopAllBtn.classList.add('hidden');
+                        if (workersGrid) {
+                            workersGrid.innerHTML = '';
+                            workersGrid.classList.add('hidden');
+                        }
                     }
 
                     if (data.slots_found) {
-                        const modal = document.getElementById('cat-a-alarm-modal');
-                        const detailsEl = document.getElementById('cat-a-alarm-details');
+                        const modal = document.getElementById('slot-checker-alarm-modal');
+                        const titleEl = document.getElementById('slot-checker-alarm-title');
+                        const detailsEl = document.getElementById('slot-checker-alarm-details');
+
+                        if (titleEl && data.found_category) {
+                            titleEl.innerText = `CATEGORY ${data.found_category} SLOTS DETECTED!`;
+                        }
                         if (detailsEl) detailsEl.innerText = data.found_details || "Slots available on Irembo!";
-                        
+
                         if (modal && modal.classList.contains('hidden')) {
                             modal.classList.remove('hidden');
                         }
@@ -1124,16 +1368,25 @@
                             catAAlarmInterval = null;
                             isCatAAlarmRinging = false;
                         }
-                        const modal = document.getElementById('cat-a-alarm-modal');
+                        const modal = document.getElementById('slot-checker-alarm-modal');
                         if (modal && !modal.classList.contains('hidden')) {
                             modal.classList.add('hidden');
                         }
                     }
                 })
-                .catch(err => console.error("Cat A status fetch error:", err));
+                .catch(err => console.error("Slot checker status fetch error:", err));
         }
-        setInterval(updateCatAStatus, 3000);
-        updateCatAStatus();
+
+        // Backward-compatible aliases
+        window.openCatAConfigModal = openSlotCheckerModal;
+        window.closeCatAConfigModal = closeSlotCheckerModal;
+        window.confirmStartCatAChecker = confirmStartSlotChecker;
+        window.controlCatAChecker = stopSlotChecker;
+        window.acknowledgeCatAAlarm = acknowledgeSlotAlarm;
+        window.updateCatAStatus = updateSlotCheckerStatus;
+
+        setInterval(updateSlotCheckerStatus, 3000);
+        updateSlotCheckerStatus();
     </script>
 </body>
 </html>

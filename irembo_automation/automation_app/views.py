@@ -240,6 +240,16 @@ def delete_teacher(request, teacher_id):
         messages.success(request, f"Teacher '{name}' deleted successfully.")
     return redirect('manage_teachers')
 
+def get_available_categories():
+    """Returns sorted unique license categories from both standard options and the DB."""
+    base_cats = ['A', 'B', 'B2', 'C', 'C1', 'D', 'D1', 'E', 'F']
+    try:
+        db_cats = ClientApplication.objects.exclude(category__isnull=True).exclude(category='').values_list('category', flat=True).distinct()
+        cleaned = [c.strip().upper() for c in db_cats if c and c.strip()]
+        return sorted(list(set(base_cats + cleaned)))
+    except Exception:
+        return base_cats
+
 def dashboard(request):
     """Renders the central monitoring dashboard panel grid with search, filter, and sort."""
     if request.GET.get('reset') == '1':
@@ -247,8 +257,9 @@ def dashboard(request):
             del request.session['dashboard_filters']
         return redirect('dashboard')
 
-    filter_keys = ['q', 'status', 'payment', 'teacher', 'priority', 'date_from', 'date_to', 'sort']
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'priority', 'category', 'date_from', 'date_to', 'sort', 'per_page']
     has_get_filters = any(key in request.GET for key in filter_keys)
+    valid_per_page_options = ['10', '15', '20', '25', '40', '60', 'all']
 
     if has_get_filters:
         query = request.GET.get('q', '').strip()
@@ -256,9 +267,13 @@ def dashboard(request):
         payment_filter = request.GET.get('payment', '').strip()
         teacher_filter = request.GET.get('teacher', '').strip()
         priority_filter = request.GET.get('priority', '').strip()
+        category_filter = request.GET.get('category', '').strip().upper()
         date_from = request.GET.get('date_from', '').strip()
         date_to = request.GET.get('date_to', '').strip()
         sort_by = request.GET.get('sort', '-created_at').strip()
+        per_page = request.GET.get('per_page', '').strip()
+        if per_page not in valid_per_page_options:
+            per_page = request.session.get('dashboard_filters', {}).get('per_page', '25')
 
         request.session['dashboard_filters'] = {
             'q': query,
@@ -266,9 +281,11 @@ def dashboard(request):
             'payment': payment_filter,
             'teacher': teacher_filter,
             'priority': priority_filter,
+            'category': category_filter,
             'date_from': date_from,
             'date_to': date_to,
             'sort': sort_by,
+            'per_page': per_page,
         }
     else:
         saved_filters = request.session.get('dashboard_filters', {})
@@ -277,9 +294,13 @@ def dashboard(request):
         payment_filter = saved_filters.get('payment', '')
         teacher_filter = saved_filters.get('teacher', '')
         priority_filter = saved_filters.get('priority', '')
+        category_filter = saved_filters.get('category', '').strip().upper()
         date_from = saved_filters.get('date_from', '')
         date_to = saved_filters.get('date_to', '')
         sort_by = saved_filters.get('sort', '-created_at')
+        per_page = saved_filters.get('per_page', '25')
+        if per_page not in valid_per_page_options:
+            per_page = '25'
 
     # Start with active (non-archived) applications ONLY
     applications = ClientApplication.objects.select_related('teacher').filter(is_archived=False)
@@ -319,6 +340,10 @@ def dashboard(request):
     elif teacher_filter:
         applications = applications.filter(teacher_id=teacher_filter)
 
+    # Apply category filter
+    if category_filter:
+        applications = applications.filter(category__iexact=category_filter)
+
     # Apply date range filter (Created Date)
     if date_from:
         try:
@@ -334,8 +359,22 @@ def dashboard(request):
     
     # Apply sorting
     applications = applications.order_by(sort_by)
+    total_matching_count = applications.count()
     
-    # Pagination
+    # Pagination / Per page slicing
+    if per_page == 'all':
+        page_obj = applications
+        is_paginated = False
+    else:
+        try:
+            page_size = int(per_page)
+        except (ValueError, TypeError):
+            page_size = 25
+        paginator = Paginator(applications, page_size)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        is_paginated = paginator.num_pages > 1
+
     # System Statistics (Filtered to active applications)
     now = timezone.now()
     start_of_week = now - timedelta(days=now.weekday())
@@ -355,13 +394,19 @@ def dashboard(request):
     priority_count = active_apps_qs.filter(is_priority=True).count()
     
     context = {
-        'applications': applications,
+        'applications': page_obj,
+        'page_obj': page_obj,
+        'is_paginated': is_paginated,
+        'per_page': per_page,
+        'total_matching_count': total_matching_count,
         'query': query,
         'status_filter': status_filter,
         'payment_filter': payment_filter,
         'teacher_filter': teacher_filter,
         'priority_filter': priority_filter,
         'priority_count': priority_count,
+        'category_filter': category_filter,
+        'categories': get_available_categories(),
         'date_from': date_from,
         'date_to': date_to,
         'sort_by': sort_by,
@@ -383,26 +428,33 @@ def archived_dashboard(request):
             del request.session['archived_dashboard_filters']
         return redirect('archived_dashboard')
 
-    filter_keys = ['q', 'status', 'payment', 'teacher', 'date_from', 'date_to', 'sort']
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'category', 'date_from', 'date_to', 'sort', 'per_page']
     has_get_filters = any(key in request.GET for key in filter_keys)
+    valid_per_page_options = ['10', '15', '20', '25', '40', '60', 'all']
 
     if has_get_filters:
         query = request.GET.get('q', '').strip()
         status_filter = request.GET.get('status', '').strip()
         payment_filter = request.GET.get('payment', '').strip()
         teacher_filter = request.GET.get('teacher', '').strip()
+        category_filter = request.GET.get('category', '').strip().upper()
         date_from = request.GET.get('date_from', '').strip()
         date_to = request.GET.get('date_to', '').strip()
         sort_by = request.GET.get('sort', '-created_at').strip()
+        per_page = request.GET.get('per_page', '').strip()
+        if per_page not in valid_per_page_options:
+            per_page = request.session.get('archived_dashboard_filters', {}).get('per_page', '25')
 
         request.session['archived_dashboard_filters'] = {
             'q': query,
             'status': status_filter,
             'payment': payment_filter,
             'teacher': teacher_filter,
+            'category': category_filter,
             'date_from': date_from,
             'date_to': date_to,
             'sort': sort_by,
+            'per_page': per_page,
         }
     else:
         saved_filters = request.session.get('archived_dashboard_filters', {})
@@ -410,9 +462,13 @@ def archived_dashboard(request):
         status_filter = saved_filters.get('status', '')
         payment_filter = saved_filters.get('payment', '')
         teacher_filter = saved_filters.get('teacher', '')
+        category_filter = saved_filters.get('category', '').strip().upper()
         date_from = saved_filters.get('date_from', '')
         date_to = saved_filters.get('date_to', '')
         sort_by = saved_filters.get('sort', '-created_at')
+        per_page = saved_filters.get('per_page', '25')
+        if per_page not in valid_per_page_options:
+            per_page = '25'
 
     # Query ONLY archived applications
     applications = ClientApplication.objects.select_related('teacher').filter(is_archived=True)
@@ -442,6 +498,9 @@ def archived_dashboard(request):
     elif teacher_filter:
         applications = applications.filter(teacher_id=teacher_filter)
 
+    if category_filter:
+        applications = applications.filter(category__iexact=category_filter)
+
     if date_from:
         try:
             applications = applications.filter(created_at__date__gte=date_from)
@@ -455,6 +514,20 @@ def archived_dashboard(request):
             pass
 
     applications = applications.order_by(sort_by)
+    total_matching_count = applications.count()
+
+    if per_page == 'all':
+        page_obj = applications
+        is_paginated = False
+    else:
+        try:
+            page_size = int(per_page)
+        except (ValueError, TypeError):
+            page_size = 25
+        paginator = Paginator(applications, page_size)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        is_paginated = paginator.num_pages > 1
 
     archived_apps_qs = ClientApplication.objects.filter(is_archived=True)
     stats = {
@@ -470,11 +543,17 @@ def archived_dashboard(request):
     archived_count = archived_apps_qs.count()
 
     context = {
-        'applications': applications,
+        'applications': page_obj,
+        'page_obj': page_obj,
+        'is_paginated': is_paginated,
+        'per_page': per_page,
+        'total_matching_count': total_matching_count,
         'query': query,
         'status_filter': status_filter,
         'payment_filter': payment_filter,
         'teacher_filter': teacher_filter,
+        'category_filter': category_filter,
+        'categories': get_available_categories(),
         'date_from': date_from,
         'date_to': date_to,
         'sort_by': sort_by,
@@ -972,36 +1051,61 @@ def api_start_slot_checker(request):
     import json
     from .slot_checker import start_slot_checker
     
+    category = 'A'
     batch_size = 10
     use_priority = True
     sort_by = 'created_at'
+    targets = ['automated']
 
     # Support JSON payload or Form data
     if request.body:
         try:
             data = json.loads(request.body.decode('utf-8'))
+            category = data.get('category', category)
             batch_size = data.get('batch_size', batch_size)
             use_priority = data.get('use_priority', use_priority)
             sort_by = data.get('sort_by', sort_by)
+            targets = data.get('targets', targets)
         except Exception:
             pass
     if not request.body or not data:
+        category = request.POST.get('category', category)
         batch_size = request.POST.get('batch_size', batch_size)
         use_priority = request.POST.get('use_priority', 'true').lower() in ['true', '1', 'yes']
         sort_by = request.POST.get('sort_by', sort_by)
+        targets_post = request.POST.getlist('targets')
+        if targets_post:
+            targets = targets_post
 
     success, msg = start_slot_checker(
+        category=category,
         batch_size=batch_size,
         use_priority=use_priority,
-        sort_by=sort_by
+        sort_by=sort_by,
+        targets=targets
     )
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 @csrf_exempt
 @require_POST
 def api_stop_slot_checker(request):
+    import json
     from .slot_checker import stop_slot_checker
-    success, msg = stop_slot_checker()
+    
+    checker_id = None
+    category = None
+    if request.body:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            checker_id = data.get('checker_id')
+            category = data.get('category')
+        except Exception:
+            pass
+    if not checker_id and not category:
+        checker_id = request.POST.get('checker_id')
+        category = request.POST.get('category')
+
+    success, msg = stop_slot_checker(checker_id=checker_id, category=category)
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 def api_status_slot_checker(request):
@@ -1012,8 +1116,20 @@ def api_status_slot_checker(request):
 @csrf_exempt
 @require_POST
 def api_ack_slot_alert(request):
+    import json
     from .slot_checker import acknowledge_slot_alert
-    success, msg = acknowledge_slot_alert()
+
+    trigger_launch = True
+    if request.body:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            trigger_launch = data.get('trigger_launch', True)
+        except Exception:
+            pass
+    if 'trigger_launch' in request.POST:
+        trigger_launch = request.POST.get('trigger_launch', 'true').lower() in ['true', '1', 'yes']
+
+    success, msg = acknowledge_slot_alert(trigger_launch=trigger_launch)
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 @csrf_exempt
@@ -1158,6 +1274,7 @@ def export_applications(request):
     status_filter = request.GET.get('status', saved_filters.get('status', ''))
     payment_filter = request.GET.get('payment', saved_filters.get('payment', ''))
     teacher_filter = request.GET.get('teacher', saved_filters.get('teacher', ''))
+    category_filter = request.GET.get('category', saved_filters.get('category', '')).strip().upper()
     date_from = request.GET.get('date_from', saved_filters.get('date_from', ''))
     date_to = request.GET.get('date_to', saved_filters.get('date_to', ''))
     sort_by = request.GET.get('sort', saved_filters.get('sort', '-created_at'))
@@ -1185,6 +1302,8 @@ def export_applications(request):
         applications = applications.filter(teacher__isnull=True)
     elif teacher_filter:
         applications = applications.filter(teacher_id=teacher_filter)
+    if category_filter:
+        applications = applications.filter(category__iexact=category_filter)
     if date_from:
         try:
             applications = applications.filter(created_at__date__gte=date_from)
