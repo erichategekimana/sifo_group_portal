@@ -250,6 +250,16 @@ def get_available_categories():
     except Exception:
         return base_cats
 
+def get_available_working_sites():
+    """Returns sorted unique working sites from both standard options and the DB."""
+    base_sites = ['BUSANZA AUTOMATED CENTER', 'KICUKIRO - BUSANZA SITE (KIC)']
+    try:
+        db_sites = ClientApplication.objects.exclude(working_site__isnull=True).exclude(working_site='').values_list('working_site', flat=True).distinct()
+        cleaned = [s.strip() for s in db_sites if s and s.strip()]
+        return sorted(list(set(base_sites + cleaned)))
+    except Exception:
+        return base_sites
+
 def dashboard(request):
     """Renders the central monitoring dashboard panel grid with search, filter, and sort."""
     if request.GET.get('reset') == '1':
@@ -257,7 +267,7 @@ def dashboard(request):
             del request.session['dashboard_filters']
         return redirect('dashboard')
 
-    filter_keys = ['q', 'status', 'payment', 'teacher', 'priority', 'category', 'date_from', 'date_to', 'sort', 'per_page']
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'priority', 'category', 'site', 'date_from', 'date_to', 'sort', 'per_page']
     has_get_filters = any(key in request.GET for key in filter_keys)
     valid_per_page_options = ['10', '15', '20', '25', '40', '60', 'all']
 
@@ -268,6 +278,7 @@ def dashboard(request):
         teacher_filter = request.GET.get('teacher', '').strip()
         priority_filter = request.GET.get('priority', '').strip()
         category_filter = request.GET.get('category', '').strip().upper()
+        site_filter = request.GET.get('site', '').strip()
         date_from = request.GET.get('date_from', '').strip()
         date_to = request.GET.get('date_to', '').strip()
         sort_by = request.GET.get('sort', '-created_at').strip()
@@ -282,6 +293,7 @@ def dashboard(request):
             'teacher': teacher_filter,
             'priority': priority_filter,
             'category': category_filter,
+            'site': site_filter,
             'date_from': date_from,
             'date_to': date_to,
             'sort': sort_by,
@@ -295,6 +307,7 @@ def dashboard(request):
         teacher_filter = saved_filters.get('teacher', '')
         priority_filter = saved_filters.get('priority', '')
         category_filter = saved_filters.get('category', '').strip().upper()
+        site_filter = saved_filters.get('site', '').strip()
         date_from = saved_filters.get('date_from', '')
         date_to = saved_filters.get('date_to', '')
         sort_by = saved_filters.get('sort', '-created_at')
@@ -343,6 +356,10 @@ def dashboard(request):
     # Apply category filter
     if category_filter:
         applications = applications.filter(category__iexact=category_filter)
+
+    # Apply working site filter
+    if site_filter:
+        applications = applications.filter(working_site__iexact=site_filter)
 
     # Apply date range filter (Created Date)
     if date_from:
@@ -407,6 +424,8 @@ def dashboard(request):
         'priority_count': priority_count,
         'category_filter': category_filter,
         'categories': get_available_categories(),
+        'site_filter': site_filter,
+        'working_sites': get_available_working_sites(),
         'date_from': date_from,
         'date_to': date_to,
         'sort_by': sort_by,
@@ -428,7 +447,7 @@ def archived_dashboard(request):
             del request.session['archived_dashboard_filters']
         return redirect('archived_dashboard')
 
-    filter_keys = ['q', 'status', 'payment', 'teacher', 'category', 'date_from', 'date_to', 'sort', 'per_page']
+    filter_keys = ['q', 'status', 'payment', 'teacher', 'category', 'site', 'date_from', 'date_to', 'sort', 'per_page']
     has_get_filters = any(key in request.GET for key in filter_keys)
     valid_per_page_options = ['10', '15', '20', '25', '40', '60', 'all']
 
@@ -438,6 +457,7 @@ def archived_dashboard(request):
         payment_filter = request.GET.get('payment', '').strip()
         teacher_filter = request.GET.get('teacher', '').strip()
         category_filter = request.GET.get('category', '').strip().upper()
+        site_filter = request.GET.get('site', '').strip()
         date_from = request.GET.get('date_from', '').strip()
         date_to = request.GET.get('date_to', '').strip()
         sort_by = request.GET.get('sort', '-created_at').strip()
@@ -451,6 +471,7 @@ def archived_dashboard(request):
             'payment': payment_filter,
             'teacher': teacher_filter,
             'category': category_filter,
+            'site': site_filter,
             'date_from': date_from,
             'date_to': date_to,
             'sort': sort_by,
@@ -463,6 +484,7 @@ def archived_dashboard(request):
         payment_filter = saved_filters.get('payment', '')
         teacher_filter = saved_filters.get('teacher', '')
         category_filter = saved_filters.get('category', '').strip().upper()
+        site_filter = saved_filters.get('site', '').strip()
         date_from = saved_filters.get('date_from', '')
         date_to = saved_filters.get('date_to', '')
         sort_by = saved_filters.get('sort', '-created_at')
@@ -500,6 +522,9 @@ def archived_dashboard(request):
 
     if category_filter:
         applications = applications.filter(category__iexact=category_filter)
+
+    if site_filter:
+        applications = applications.filter(working_site__iexact=site_filter)
 
     if date_from:
         try:
@@ -554,6 +579,8 @@ def archived_dashboard(request):
         'teacher_filter': teacher_filter,
         'category_filter': category_filter,
         'categories': get_available_categories(),
+        'site_filter': site_filter,
+        'working_sites': get_available_working_sites(),
         'date_from': date_from,
         'date_to': date_to,
         'sort_by': sort_by,
@@ -1275,6 +1302,7 @@ def export_applications(request):
     payment_filter = request.GET.get('payment', saved_filters.get('payment', ''))
     teacher_filter = request.GET.get('teacher', saved_filters.get('teacher', ''))
     category_filter = request.GET.get('category', saved_filters.get('category', '')).strip().upper()
+    site_filter = request.GET.get('site', saved_filters.get('site', '')).strip()
     date_from = request.GET.get('date_from', saved_filters.get('date_from', ''))
     date_to = request.GET.get('date_to', saved_filters.get('date_to', ''))
     sort_by = request.GET.get('sort', saved_filters.get('sort', '-created_at'))
@@ -1304,6 +1332,8 @@ def export_applications(request):
         applications = applications.filter(teacher_id=teacher_filter)
     if category_filter:
         applications = applications.filter(category__iexact=category_filter)
+    if site_filter:
+        applications = applications.filter(working_site__iexact=site_filter)
     if date_from:
         try:
             applications = applications.filter(created_at__date__gte=date_from)

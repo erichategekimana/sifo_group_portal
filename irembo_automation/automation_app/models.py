@@ -47,7 +47,9 @@ class ClientApplication(models.Model):
     class PaymentStatus(models.TextChoices):
         UNPAID = 'UNPAID', 'Unpaid'
         PAID = 'PAID', 'Paid'
-        EXPIRED = 'EXPIRED', 'Payment Code Expired'
+        OVER_PAID = 'OVER_PAID', 'Overpaid'
+        UNDER_PAID = 'UNDER_PAID', 'Underpaid'
+    
 
     # Personal Information (with robust validators)
     first_name = models.CharField(max_length=100)
