@@ -1070,8 +1070,38 @@ def manage_session(request):
     return JsonResponse({'status': 'opened'})
 
 # ---------------------------------------------------------------------------
-# Category A Background Slot Checker Endpoints
+# Background Slot Checker Endpoints
 # ---------------------------------------------------------------------------
+def api_slot_checker_candidates(request):
+    """Returns eligible probe applications for the specified category so the user can pick up to 3."""
+    category = (request.GET.get('category', 'A') or 'A').strip().upper()
+    qs = ClientApplication.objects.filter(
+        category__iexact=category,
+        is_archived=False
+    ).exclude(
+        status__in=['SUCCESS', 'FINALIZING', 'PROCESSING']
+    ).exclude(
+        national_id__isnull=True
+    ).exclude(
+        national_id=''
+    ).order_by('-is_priority', '-created_at')
+
+    candidates = []
+    for app in qs:
+        candidates.append({
+            'id': app.id,
+            'first_name': app.first_name,
+            'last_name': app.last_name,
+            'national_id': app.national_id,
+            'category': app.category,
+            'provisional_number': app.provisional_number or '',
+            'working_site': app.working_site or 'BUSANZA AUTOMATED CENTER',
+            'status': app.status,
+            'is_priority': app.is_priority,
+        })
+    return JsonResponse({'category': category, 'candidates': candidates})
+
+
 @csrf_exempt
 @require_POST
 def api_start_slot_checker(request):
@@ -1083,6 +1113,8 @@ def api_start_slot_checker(request):
     use_priority = True
     sort_by = 'created_at'
     targets = ['automated']
+    candidate_ids = []
+    data = None
 
     # Support JSON payload or Form data
     if request.body:
@@ -1093,6 +1125,7 @@ def api_start_slot_checker(request):
             use_priority = data.get('use_priority', use_priority)
             sort_by = data.get('sort_by', sort_by)
             targets = data.get('targets', targets)
+            candidate_ids = data.get('candidate_ids', candidate_ids)
         except Exception:
             pass
     if not request.body or not data:
@@ -1103,13 +1136,17 @@ def api_start_slot_checker(request):
         targets_post = request.POST.getlist('targets')
         if targets_post:
             targets = targets_post
+        candidate_ids_post = request.POST.getlist('candidate_ids')
+        if candidate_ids_post:
+            candidate_ids = candidate_ids_post
 
     success, msg = start_slot_checker(
         category=category,
         batch_size=batch_size,
         use_priority=use_priority,
         sort_by=sort_by,
-        targets=targets
+        targets=targets,
+        candidate_ids=candidate_ids
     )
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
@@ -1157,6 +1194,25 @@ def api_ack_slot_alert(request):
         trigger_launch = request.POST.get('trigger_launch', 'true').lower() in ['true', '1', 'yes']
 
     success, msg = acknowledge_slot_alert(trigger_launch=trigger_launch)
+    return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
+
+@csrf_exempt
+@require_POST
+def api_ack_slot_error_alert(request):
+    import json
+    from .slot_checker import acknowledge_error_alert
+
+    stop_worker = False
+    if request.body:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            stop_worker = bool(data.get('stop_worker', False))
+        except Exception:
+            pass
+    if 'stop_worker' in request.POST:
+        stop_worker = request.POST.get('stop_worker', 'false').lower() in ['true', '1', 'yes']
+
+    success, msg = acknowledge_error_alert(stop_worker=stop_worker)
     return JsonResponse({'status': 'success' if success else 'error', 'message': msg})
 
 @csrf_exempt

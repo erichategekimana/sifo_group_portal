@@ -13,6 +13,10 @@ try:
 except ImportError:
     HAVE_WINSOUND = False
 
+# Maximum duration (in seconds) to keep a single Chromium browser session open
+# before recycling it and opening a fresh one (30 minutes).
+SESSION_MAX_DURATION = 30 * 60
+
 # Supported site targets definition
 TARGET_CONFIGS = {
     "automated": {
@@ -45,58 +49,88 @@ _alert_state = {
     "found_site_name": None
 }
 
-# Global candidate lease tracker to prevent concurrent workers from using the same applicant ID
+# Global error alert state when all selected probe applications fail in a full cycle
+_error_alert_state = {
+    "all_failed": False,
+    "failed_time": None,
+    "failed_details": "",
+    "failed_checker_id": None,
+    "failed_category": None,
+    "failed_site_name": None
+}
+
+# Global candidate lease tracker to prevent concurrent workers from colliding on the same applicant ID when multiple are provided
 _leased_candidate_ids = set()
 _candidate_lease_lock = threading.Lock()
 
 
-def lease_candidate(category="A", exclude_ids=None):
+def select_sticky_candidate(candidate_ids, failed_ids=None):
     """
-    Leases an eligible candidate for a slot checker worker based on requested category.
-    Ensures that no two concurrent workers share the same candidate.
+    Selects the next healthy candidate from the user-specified list of (up to 3) candidate IDs.
+    - Strictly uses only IDs in `candidate_ids` (Phase 1).
+    - Excludes any candidate ID that has failed even once in `failed_ids` (Phase 2).
+    - Prefers an unleased candidate if multiple workers are active, falling back to a healthy
+      candidate from `candidate_ids` if fewer candidates were selected than active workers.
     """
     from .models import ClientApplication
 
-    if exclude_ids is None:
-        exclude_ids = set()
+    if not candidate_ids:
+        return None
+    if failed_ids is None:
+        failed_ids = set()
 
-    cat_str = (category or "A").strip()
+    healthy_ids = [cid for cid in candidate_ids if cid not in failed_ids]
+    if not healthy_ids:
+        return None
 
     with _candidate_lease_lock:
-        def _fetch_candidates():
-            return list(ClientApplication.objects.filter(
-                category__iexact=cat_str,
-                is_archived=False
-            ).exclude(
-                status__in=['SUCCESS', 'FINALIZING', 'CANCELED', 'PROCESSING']
-            ).exclude(
-                national_id__isnull=True
-            ).exclude(
-                national_id=''
-            ).order_by('id')[:30])
+        def _fetch_by_ids():
+            apps_by_id = {
+                app.id: app
+                for app in ClientApplication.objects.filter(
+                    id__in=healthy_ids,
+                    is_archived=False
+                ).exclude(
+                    national_id__isnull=True
+                ).exclude(
+                    national_id=''
+                )
+            }
+            # Preserve exact user-selected order
+            return [apps_by_id[cid] for cid in healthy_ids if cid in apps_by_id]
 
-        candidates = run_in_db_thread(_fetch_candidates)
+        candidates = run_in_db_thread(_fetch_by_ids)
         if not candidates:
             return None
 
-        # Filter out currently leased IDs and recent portal error IDs
-        available = [c for c in candidates if c.id not in _leased_candidate_ids and c.id not in exclude_ids]
-
-        if not available:
-            # If all non-leased candidates are excluded due to temporary errors, try unleased ones anyway
-            available = [c for c in candidates if c.id not in _leased_candidate_ids]
-
-        if not available:
-            return None
-
-        chosen = available[0]
+        # Prefer a candidate not currently leased by another concurrent site worker
+        unleased = [c for c in candidates if c.id not in _leased_candidate_ids]
+        chosen = unleased[0] if unleased else candidates[0]
         _leased_candidate_ids.add(chosen.id)
         return chosen
 
 
+def refresh_candidate_instance(app_id):
+    """
+    Fetches a fresh copy of the sticky candidate from the database to ensure up-to-date fields.
+    """
+    from .models import ClientApplication
+
+    if not app_id:
+        return None
+
+    def _fetch():
+        try:
+            return ClientApplication.objects.get(id=app_id, is_archived=False)
+        except ClientApplication.DoesNotExist:
+            return None
+
+    return run_in_db_thread(_fetch)
+
+
 def release_candidate(app_id):
     """
-    Releases a previously leased candidate so other workers or future runs can use them.
+    Releases a previously leased candidate ID.
     """
     if app_id is None:
         return
@@ -104,14 +138,51 @@ def release_candidate(app_id):
         _leased_candidate_ids.discard(app_id)
 
 
-def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="created_at", targets=None):
+def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="created_at", targets=None, candidate_ids=None):
     """
-    Starts concurrent slot checker workers for the given category and target sites.
+    Starts concurrent slot checker workers for the given category and target sites,
+    using the user-selected probe applications (1 to 3 applications).
     Existing running workers for other categories remain running without interruption.
     """
     from .models import ClientApplication
 
     category = (category or "A").strip().upper()
+
+    # Phase 1: Validate user-selected candidate_ids (1 to 5 applications)
+    if not candidate_ids or not isinstance(candidate_ids, (list, tuple)):
+        return False, "Please select between 1 and 5 applications to use for slot checking."
+
+    cleaned_ids = []
+    for raw_id in candidate_ids:
+        try:
+            cid = int(raw_id)
+            if cid not in cleaned_ids:
+                cleaned_ids.append(cid)
+        except (ValueError, TypeError):
+            continue
+
+    if len(cleaned_ids) < 1:
+        return False, "Please select at least 1 valid application to use for slot checking."
+    if len(cleaned_ids) > 5:
+        return False, "You can select a maximum of 5 applications for slot checking."
+
+    def _validate_selected_candidates():
+        valid_apps = list(
+            ClientApplication.objects.filter(
+                id__in=cleaned_ids,
+                is_archived=False
+            ).exclude(
+                national_id__isnull=True
+            ).exclude(
+                national_id=''
+            )
+        )
+        valid_map = {a.id: a for a in valid_apps}
+        return [cid for cid in cleaned_ids if cid in valid_map]
+
+    valid_candidate_ids = run_in_db_thread(_validate_selected_candidates)
+    if not valid_candidate_ids:
+        return False, "None of the selected applications were found or have a valid National ID."
 
     # Defensive validation of batch_size
     try:
@@ -135,17 +206,6 @@ def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="
     if not valid_targets:
         valid_targets = ["automated"]
 
-    # Verify that at least one candidate exists for this category
-    def _check_candidates_exist():
-        return ClientApplication.objects.filter(
-            category__iexact=category,
-            is_archived=False
-        ).exclude(status__in=['SUCCESS', 'FINALIZING', 'CANCELED']).exists()
-
-    has_candidates = run_in_db_thread(_check_candidates_exist)
-    if not has_candidates:
-        return False, f"Cannot start checker for Category {category}: No pending Category {category} applications found in database."
-
     started_targets = []
     with _registry_lock:
         for index, target_id in enumerate(valid_targets):
@@ -160,6 +220,13 @@ def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="
             stop_event = threading.Event()
             cfg = TARGET_CONFIGS[target_id]
 
+            # Rotate starting candidate order slightly for secondary site workers if 2+ candidates were chosen
+            if len(valid_candidate_ids) > 1 and index > 0:
+                offset = index % len(valid_candidate_ids)
+                worker_candidate_ids = valid_candidate_ids[offset:] + valid_candidate_ids[:offset]
+            else:
+                worker_candidate_ids = list(valid_candidate_ids)
+
             ACTIVE_CHECKERS[checker_key] = {
                 "id": checker_key,
                 "category": category,
@@ -171,6 +238,7 @@ def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="
                 "check_count": 0,
                 "last_check": None,
                 "current_candidate": None,
+                "candidate_ids": worker_candidate_ids,
                 "batch_size": batch_size,
                 "use_priority": bool(use_priority),
                 "sort_by": sort_by,
@@ -180,7 +248,17 @@ def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="
 
             worker_thread = threading.Thread(
                 target=_worker_loop,
-                args=(checker_key, category, target_id, stop_event, batch_size, bool(use_priority), sort_by, index * 2.5),
+                args=(
+                    checker_key,
+                    category,
+                    target_id,
+                    stop_event,
+                    worker_candidate_ids,
+                    batch_size,
+                    bool(use_priority),
+                    sort_by,
+                    index * 2.5
+                ),
                 daemon=True,
                 name=f"SlotWorker_{checker_key}"
             )
@@ -191,7 +269,10 @@ def start_slot_checker(category="A", batch_size=10, use_priority=True, sort_by="
     if not started_targets:
         return False, f"Checker for Category {category} is already running on the selected site(s)."
 
-    return True, f"Started checker for Category {category} on {len(started_targets)} site(s) ({', '.join(started_targets)})."
+    return True, (
+        f"Started checker for Category {category} on {len(started_targets)} site(s) "
+        f"({', '.join(started_targets)}) using {len(valid_candidate_ids)} selected application(s)."
+    )
 
 
 def stop_slot_checker(checker_id=None, category=None):
@@ -209,6 +290,8 @@ def stop_slot_checker(checker_id=None, category=None):
                 cinfo["is_active"] = False
                 cinfo["status"] = "Stopped"
                 cinfo["current_candidate"] = None
+                if _error_alert_state.get("failed_checker_id") == checker_id:
+                    _error_alert_state["all_failed"] = False
                 return True, f"Stopped worker {cinfo['category']} - {cinfo['site_name']}."
             return False, f"Worker {checker_id} not found."
 
@@ -222,6 +305,8 @@ def stop_slot_checker(checker_id=None, category=None):
                     cinfo["status"] = "Stopped"
                     cinfo["current_candidate"] = None
                     stopped_count += 1
+                    if _error_alert_state.get("failed_checker_id") == cid:
+                        _error_alert_state["all_failed"] = False
             if stopped_count > 0:
                 return True, f"Stopped {stopped_count} worker(s) for Category {cat_upper}."
             return False, f"No active workers found for Category {cat_upper}."
@@ -242,6 +327,10 @@ def stop_slot_checker(checker_id=None, category=None):
         _alert_state["slots_found"] = False
         _alert_state["slots_found_time"] = None
         _alert_state["found_details"] = ""
+
+        _error_alert_state["all_failed"] = False
+        _error_alert_state["failed_time"] = None
+        _error_alert_state["failed_details"] = ""
 
         return True, f"Stopped all {stopped_count} slot checker workers."
 
@@ -294,8 +383,36 @@ def get_slot_checker_status():
             "found_checker_id": _alert_state["found_checker_id"],
             "found_category": _alert_state["found_category"],
             "found_site_name": _alert_state["found_site_name"],
+            "all_failed": _error_alert_state["all_failed"],
+            "failed_time": _error_alert_state["failed_time"],
+            "failed_details": _error_alert_state["failed_details"],
+            "failed_checker_id": _error_alert_state["failed_checker_id"],
+            "failed_category": _error_alert_state["failed_category"],
+            "failed_site_name": _error_alert_state["failed_site_name"],
             "workers": active_workers
         }
+
+
+def acknowledge_error_alert(stop_worker=False):
+    """
+    Acknowledges/dismisses the 'all selected applications failed' warning dialog and silences the warning sound.
+    If stop_worker=True, also stops the worker that triggered the error alert.
+    """
+    with _registry_lock:
+        failed_cid = _error_alert_state.get("failed_checker_id")
+        _error_alert_state["all_failed"] = False
+        _error_alert_state["failed_time"] = None
+        _error_alert_state["failed_details"] = ""
+
+        if stop_worker and failed_cid and failed_cid in ACTIVE_CHECKERS:
+            cinfo = ACTIVE_CHECKERS[failed_cid]
+            cinfo["stop_event"].set()
+            cinfo["is_active"] = False
+            cinfo["status"] = "Stopped"
+            cinfo["current_candidate"] = None
+            return True, f"Error alert dismissed and stopped worker {cinfo['category']} - {cinfo['site_name']}."
+
+        return True, "Error alert dismissed. Checker continues looping through selected applications."
 
 
 def acknowledge_slot_alert(trigger_launch=True):
@@ -445,6 +562,39 @@ def _safe_select_time_slot_by_index(engine, target_index):
         return False
 
 
+def _click_shyira_ku_gihe(engine):
+    """
+    Phase 3: Clicks the 'Shyira ku gihe' (refresh-btn) button on the Irembo slot selector
+    to refresh available slots in-page without closing or reloading the browser.
+    """
+    page = engine.page
+    if page is None or page.is_closed():
+        raise Exception("Browser page closed before clicking 'Shyira ku gihe'.")
+
+    # Dismiss any open dropdown panel so it doesn't intercept the click
+    try:
+        if page.locator('.ng-dropdown-panel').is_visible():
+            page.keyboard.press("Escape")
+            time.sleep(0.3)
+    except Exception:
+        pass
+
+    refresh_btn = page.locator('button.refresh-btn, button:has-text("Shyira ku gihe")').first
+    refresh_btn.wait_for(state="visible", timeout=6000)
+
+    if refresh_btn.is_disabled():
+        raise Exception("'Shyira ku gihe' refresh button is disabled.")
+
+    refresh_btn.scroll_into_view_if_needed()
+    refresh_btn.click(timeout=5000)
+
+    # Human-like wait for Angular slot list refresh
+    time.sleep(random.uniform(1.5, 2.5))
+
+    # Verify that no portal error appeared after refreshing
+    engine.capture_error_if_any()
+
+
 def _auto_launch_targeted_batch(category, target_id, batch_size=10, use_priority=True, sort_by="created_at"):
     """
     Auto-launches eligible applications matching BOTH category and designated site.
@@ -540,25 +690,30 @@ def _auto_launch_targeted_batch(category, target_id, batch_size=10, use_priority
     print(f"[Targeted Auto-Launcher] Finished auto-launch! Successfully started {launched_count} applications for Category {category} ({cfg['name']}).")
 
 
-def _worker_loop(checker_key, category, target_id, stop_event, batch_size=10, use_priority=True, sort_by="created_at", initial_delay=0.0):
+def _worker_loop(checker_key, category, target_id, stop_event, candidate_ids, batch_size=10, use_priority=True, sort_by="created_at", initial_delay=0.0):
     """
-    Dedicated check loop for an individual site & category worker.
-    Runs concurrently and uses LocationStrategy to evaluate slots.
+    Dedicated check loop for an individual site & category worker:
+    - Phase 1: Uses only the user-selected `candidate_ids` (1 to 3 applications).
+    - Phase 2: Sticks to the selected application indefinitely unless it encounters an error (even once),
+               in which case it switches to the next application in `candidate_ids`.
+    - Phase 3: Keeps Chromium open for 30 minutes at the slot stage, waiting 3-5s and clicking
+               'Shyira ku gihe' to refresh slots in-page before recycling the browser after 30 minutes.
     """
     from .automation_engine import IremboAutomationEngine
 
     cfg = TARGET_CONFIGS.get(target_id, TARGET_CONFIGS["automated"])
     strategy = get_location_strategy("Kicukiro", working_site=cfg["site_value"])
 
-    print(f"[{category} - {cfg['name']} Worker] Initializing with delay {initial_delay}s...")
+    print(f"[{category} - {cfg['name']} Worker] Initializing with delay {initial_delay}s (Selected candidate IDs: {candidate_ids})...")
     if initial_delay > 0:
         for _ in range(int(initial_delay * 10)):
             if stop_event.is_set():
                 return
             time.sleep(0.1)
 
-    recently_failed_ids = set()
-    last_candidate_id = None
+    failed_candidate_ids = set()
+    active_candidate = None
+    last_error_msg = ""
 
     while not stop_event.is_set():
         # Check if slots were found by this specific worker and alarm is ringing
@@ -594,29 +749,72 @@ def _worker_loop(checker_key, category, target_id, stop_event, batch_size=10, us
             time.sleep(1)
             continue
 
-        # Step 1: Lease an available candidate exclusively for this category worker
-        candidate = lease_candidate(category=category, exclude_ids=recently_failed_ids)
-        if not candidate:
+        # Phase 1 & 2: Acquire or keep the sticky candidate from the user-selected list (up to 5)
+        if active_candidate is not None:
+            refreshed = refresh_candidate_instance(active_candidate.id)
+            if refreshed is None:
+                failed_candidate_ids.add(active_candidate.id)
+                release_candidate(active_candidate.id)
+                active_candidate = None
+            else:
+                active_candidate = refreshed
+
+        if active_candidate is None:
+            active_candidate = select_sticky_candidate(candidate_ids, failed_ids=failed_candidate_ids)
+
+        if not active_candidate:
+            # All user-selected applications (up to 5) failed in this pass!
+            # Alert user with sound + popup dialog, reset failed set, and keep looping!
+            warn_msg = (
+                f"All {len(candidate_ids)} selected application(s) for Category {category} ({cfg['name']}) are failing! "
+                f"Last error: {last_error_msg or 'Portal / validation error'}. "
+                f"Restarting loop through selected applications..."
+            )
+            print(f"\a[{category} - {cfg['name']} Worker Alert] {warn_msg}")
             with _registry_lock:
+                _error_alert_state["all_failed"] = True
+                _error_alert_state["failed_time"] = time.time()
+                _error_alert_state["failed_checker_id"] = checker_key
+                _error_alert_state["failed_category"] = category
+                _error_alert_state["failed_site_name"] = cfg["name"]
+                _error_alert_state["failed_details"] = warn_msg
+
                 if checker_key in ACTIVE_CHECKERS:
-                    ACTIVE_CHECKERS[checker_key]["status"] = f"Waiting for Category {category} candidate..."
-            time.sleep(5)
+                    ACTIVE_CHECKERS[checker_key]["status"] = f"⚠️ All {len(candidate_ids)} app(s) failing! Restarting loop..."
+                    ACTIVE_CHECKERS[checker_key]["current_candidate"] = None
+
+            if HAVE_WINSOUND:
+                for _ in range(3):
+                    try:
+                        winsound.Beep(650, 450)
+                        time.sleep(0.15)
+                    except Exception:
+                        break
+
+            # Reset failed set so the worker restarts from the first selected application
+            failed_candidate_ids.clear()
+
+            # Wait 3-5 seconds before restarting the loop
+            for _ in range(int(random.uniform(3.0, 5.0) * 5)):
+                if stop_event.is_set():
+                    break
+                time.sleep(0.2)
             continue
 
-        last_candidate_id = candidate.id
-        cand_name = f"{candidate.first_name} {candidate.last_name}"
+        cand_name = f"{active_candidate.first_name} {active_candidate.last_name}"
         with _registry_lock:
             if checker_key in ACTIVE_CHECKERS:
                 ACTIVE_CHECKERS[checker_key]["current_candidate"] = cand_name
-                ACTIVE_CHECKERS[checker_key]["status"] = f"Checking using {candidate.first_name}..."
-        print(f"[{category} - {cfg['name']} Worker] Checking slots using {candidate.national_id} ({cand_name})...")
+                ACTIVE_CHECKERS[checker_key]["status"] = f"Opening session with {active_candidate.first_name}..."
+        print(f"[{category} - {cfg['name']} Worker] Launching 30-min session using sticky candidate {active_candidate.national_id} ({cand_name})...")
 
         found_any_slots = False
         found_details_str = ""
+        session_had_error = False
 
         try:
             with sync_playwright() as p:
-                engine = IremboAutomationEngine(booking_record=candidate, is_slot_checker=True)
+                engine = IremboAutomationEngine(booking_record=active_candidate, is_slot_checker=True)
                 engine._get_time_options = lambda: _safe_get_time_options(engine)
                 engine._select_time_slot_by_index = lambda idx: _safe_select_time_slot_by_index(engine, idx)
 
@@ -624,8 +822,8 @@ def _worker_loop(checker_key, category, target_id, stop_event, batch_size=10, us
                 engine.initialize_stealth_browser(p, headless=True)
 
                 engine.navigate_to_booking_form(
-                    national_id=candidate.national_id,
-                    verification_data=candidate.first_name
+                    national_id=active_candidate.national_id,
+                    verification_data=active_candidate.first_name
                 )
 
                 if engine.page is None or engine.page.is_closed():
@@ -644,83 +842,142 @@ def _worker_loop(checker_key, category, target_id, stop_event, batch_size=10, us
                 engine.set_angular_dropdown(district_control, "Kicukiro")
                 time.sleep(2)
 
-                # Check time schedules and evaluate against this worker's location strategy
-                time_options = _safe_get_time_options(engine)
-                if not time_options:
+                # Candidate succeeded in reaching the slot checking screen — clear any previous all_failed alert for this worker
+                with _registry_lock:
+                    if _error_alert_state.get("failed_checker_id") == checker_key:
+                        _error_alert_state["all_failed"] = False
+
+                # ── Phase 3: 30-Minute Persistent Browser Loop with 'Shyira ku gihe' Refresh ──
+                session_start_time = time.time()
+
+                while not stop_event.is_set() and (time.time() - session_start_time) < SESSION_MAX_DURATION:
+                    if engine.page is None or engine.page.is_closed():
+                        raise Exception("Browser page closed unexpectedly during slot monitoring.")
+
+                    engine.capture_error_if_any()
+
+                    elapsed_session = time.time() - session_start_time
+                    mins_left = max(1, int((SESSION_MAX_DURATION - elapsed_session) // 60))
+
+                    with _registry_lock:
+                        if checker_key in ACTIVE_CHECKERS:
+                            ACTIVE_CHECKERS[checker_key]["status"] = f"Checking slots ({active_candidate.first_name}) [{mins_left}m left]..."
+
+                    # First check current view immediately before cycling dropdown options
                     found, details = _check_slots_on_page_for_strategy(engine, strategy)
                     if found:
                         found_any_slots = True
                         found_details_str = details
-                else:
-                    for idx in range(len(time_options)):
-                        if stop_event.is_set():
-                            break
-                        _safe_select_time_slot_by_index(engine, idx)
-                        time.sleep(2)
+                    else:
+                        time_options = _safe_get_time_options(engine)
+                        if time_options:
+                            for idx in range(len(time_options)):
+                                if stop_event.is_set():
+                                    break
+                                _safe_select_time_slot_by_index(engine, idx)
+                                time.sleep(random.uniform(1.5, 2.5))
 
-                        found, details = _check_slots_on_page_for_strategy(engine, strategy)
-                        if found:
-                            found_any_slots = True
-                            found_details_str = details
-                            break
+                                found, details = _check_slots_on_page_for_strategy(engine, strategy)
+                                if found:
+                                    found_any_slots = True
+                                    found_details_str = details
+                                    break
 
-                # Increment check counters
-                now_str = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
-                with _registry_lock:
-                    if checker_key in ACTIVE_CHECKERS:
-                        ACTIVE_CHECKERS[checker_key]["check_count"] += 1
-                        ACTIVE_CHECKERS[checker_key]["last_check"] = now_str
-
-                if found_any_slots:
-                    print(f"[{category} - {cfg['name']} Worker] SLOTS FOUND! Details: {found_details_str}")
-                    with _registry_lock:
-                        _alert_state["slots_found"] = True
-                        _alert_state["slots_found_time"] = time.time()
-                        _alert_state["found_checker_id"] = checker_key
-                        _alert_state["found_category"] = category
-                        _alert_state["found_site_name"] = cfg["name"]
-                        _alert_state["found_details"] = f"Slots available for Category {category} at {cfg['name']}: {found_details_str}!"
-
-                        if checker_key in ACTIVE_CHECKERS:
-                            ACTIVE_CHECKERS[checker_key]["status"] = f"SLOTS DETECTED! Auto-launching in 30s if unacknowledged!"
-
-                    if HAVE_WINSOUND:
-                        for _ in range(5):
-                            try:
-                                winsound.Beep(1000, 500)
-                                time.sleep(0.1)
-                            except Exception:
-                                break
-                else:
+                    # Increment check counters after completing the pass
+                    now_str = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
                     with _registry_lock:
                         if checker_key in ACTIVE_CHECKERS:
-                            ACTIVE_CHECKERS[checker_key]["status"] = "No slots found. Waiting next interval."
+                            ACTIVE_CHECKERS[checker_key]["check_count"] += 1
+                            ACTIVE_CHECKERS[checker_key]["last_check"] = now_str
+
+                    if found_any_slots:
+                        print(f"[{category} - {cfg['name']} Worker] SLOTS FOUND! Details: {found_details_str}")
+                        with _registry_lock:
+                            _alert_state["slots_found"] = True
+                            _alert_state["slots_found_time"] = time.time()
+                            _alert_state["found_checker_id"] = checker_key
+                            _alert_state["found_category"] = category
+                            _alert_state["found_site_name"] = cfg["name"]
+                            _alert_state["found_details"] = f"Slots available for Category {category} at {cfg['name']}: {found_details_str}!"
+
+                            if checker_key in ACTIVE_CHECKERS:
+                                ACTIVE_CHECKERS[checker_key]["status"] = "SLOTS DETECTED! Auto-launching in 30s if unacknowledged!"
+
+                        if HAVE_WINSOUND:
+                            for _ in range(5):
+                                try:
+                                    winsound.Beep(1000, 500)
+                                    time.sleep(0.1)
+                                except Exception:
+                                    break
+                        break
+
+                    # Check if 30 minutes have elapsed before starting another refresh
+                    if (time.time() - session_start_time) >= SESSION_MAX_DURATION or stop_event.is_set():
+                        break
+
+                    # Phase 3: Wait 3-5 seconds (human-like jitter), then click 'Shyira ku gihe'
+                    wait_seconds = random.uniform(3.0, 5.0)
+                    with _registry_lock:
+                        if checker_key in ACTIVE_CHECKERS:
+                            ACTIVE_CHECKERS[checker_key]["status"] = f"No slots — Refreshing in {wait_seconds:.1f}s ({mins_left}m left)..."
+
+                    steps = int(wait_seconds / 0.2)
+                    for _ in range(max(1, steps)):
+                        if stop_event.is_set() or (_alert_state["slots_found"] and _alert_state["found_checker_id"] == checker_key):
+                            break
+                        time.sleep(0.2)
+
+                    if stop_event.is_set() or (time.time() - session_start_time) >= SESSION_MAX_DURATION:
+                        break
+
+                    with _registry_lock:
+                        if checker_key in ACTIVE_CHECKERS:
+                            ACTIVE_CHECKERS[checker_key]["status"] = f"Clicking 'Shyira ku gihe' ({mins_left}m left)..."
+
+                    _click_shyira_ku_gihe(engine)
+
+                # If 30-minute timer completed normally without finding slots, log browser recycle
+                if not found_any_slots and not stop_event.is_set():
+                    print(f"[{category} - {cfg['name']} Worker] 30-minute session reached. Closing and reopening browser with sticky candidate {cand_name}...")
+                    with _registry_lock:
+                        if checker_key in ACTIVE_CHECKERS:
+                            ACTIVE_CHECKERS[checker_key]["status"] = f"Recycling 30m browser session ({active_candidate.first_name})..."
 
         except Exception as e:
+            session_had_error = True
             err_msg = str(e)
-            print(f"[{category} - {cfg['name']} Worker Warning] Attempt failed with {candidate.national_id}: {err_msg}")
-            if "timeout" not in err_msg.lower():
-                recently_failed_ids.add(candidate.id)
+            last_error_msg = err_msg
+            print(
+                f"[{category} - {cfg['name']} Worker Warning] Error with candidate "
+                f"{active_candidate.national_id} ({cand_name}): {err_msg}. Switching to next selected candidate..."
+            )
+            # Phase 2: Immediately mark this candidate as failed on first error and switch to next
+            failed_candidate_ids.add(active_candidate.id)
+            release_candidate(active_candidate.id)
+            active_candidate = None
+
             with _registry_lock:
                 if checker_key in ACTIVE_CHECKERS:
-                    ACTIVE_CHECKERS[checker_key]["status"] = f"Portal issue: {err_msg[:30]}..."
-        finally:
-            # Release candidate lease so other workers or future runs can use them
-            release_candidate(last_candidate_id)
+                    ACTIVE_CHECKERS[checker_key]["status"] = f"Candidate failed ({err_msg[:25]}...). Switching..."
 
-        # Sleep between checks if still running and slots not found
+        # Brief pause before re-opening browser (either after 30-min recycle or candidate failover)
         if not found_any_slots and not stop_event.is_set():
-            sleep_duration = random.randint(60, 180)
-            for _ in range(sleep_duration):
-                if stop_event.is_set() or (_alert_state["slots_found"] and _alert_state["found_checker_id"] == checker_key):
+            pause_secs = random.uniform(2.0, 4.0) if not session_had_error else random.uniform(1.5, 3.0)
+            for _ in range(int(pause_secs * 5)):
+                if stop_event.is_set():
                     break
-                time.sleep(1)
+                time.sleep(0.2)
+
+    # Clean up lease when worker exits
+    if active_candidate is not None:
+        release_candidate(active_candidate.id)
 
     with _registry_lock:
         if checker_key in ACTIVE_CHECKERS:
             ACTIVE_CHECKERS[checker_key]["is_active"] = False
             ACTIVE_CHECKERS[checker_key]["current_candidate"] = None
-            if ACTIVE_CHECKERS[checker_key]["status"] != "SLOTS FOUND!":
+            if not ACTIVE_CHECKERS[checker_key]["status"].startswith("Stopped:") and ACTIVE_CHECKERS[checker_key]["status"] != "SLOTS FOUND!":
                 ACTIVE_CHECKERS[checker_key]["status"] = "Stopped"
 
     print(f"[{category} - {cfg['name']} Worker] Stopped cleanly.")
